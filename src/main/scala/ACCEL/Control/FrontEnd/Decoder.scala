@@ -44,7 +44,7 @@ class Decoder(implicit c: Configuration) extends Module {
 
   io.issueStream.valid := false.B
 
-  val inReg = Reg(new InstructionPackage)
+  val inReg = RegInit(0.U.asTypeOf(new InstructionPackage))
   
   val stall = WireDefault(false.B)
 

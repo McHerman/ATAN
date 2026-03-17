@@ -36,7 +36,7 @@ class SysCtrl(implicit c: Configuration) extends Module {
   val EnableCnt = RegInit(0.U(8.W))
   val WaitCnt = RegInit(0.U(8.W))
 
-  val ctrlOutReg = Reg(new Bundle{val state = UInt(1.W); val shift = Bool()})
+  val ctrlOutReg = RegInit(0.U.asTypeOf(new Bundle{val state = UInt(1.W); val shift = Bool()}))
   val activateOutReg = RegInit(false.B)
 
   val ctrlOut = Wire(new Bundle{val state = UInt(1.W); val shift = Bool()})

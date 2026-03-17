@@ -234,7 +234,7 @@ class ATA8Test_16 extends AnyFreeSpec with Matchers with ChiselSim {
     val n = 32
 
     simulate(new ATA8(Configuration.test16())) { dut =>
-      val source = Source.fromFile("output16.txt")
+      val source = Source.fromResource("output16.txt")
 
       dut.io.AXIST_inInst.tready.expect(true.B)
       dut.io.AXIST_inData.tready.expect(false.B)
@@ -336,7 +336,7 @@ class ATA8Test_16 extends AnyFreeSpec with Matchers with ChiselSim {
     val n = 18
 
     simulate(new ATA8(Configuration.test16())) { dut =>
-      val source = Source.fromFile("output12.txt")
+      val source = Source.fromResource("output12.txt")
 
       dut.io.AXIST_inInst.tready.expect(true.B)
       dut.io.AXIST_inData.tready.expect(false.B)
@@ -438,7 +438,7 @@ class ATA8Test_16 extends AnyFreeSpec with Matchers with ChiselSim {
     val n = 32
 
     simulate(new ATA8(Configuration.sys16_largeMem_test())) { dut =>
-      val source = Source.fromFile("testProgram16_double_Output.txt")
+      val source = Source.fromResource("testProgram16_double_Output.txt")
 
       dut.io.AXIST_inInst.tready.expect(true.B)
       dut.io.AXIST_inData.tready.expect(false.B)

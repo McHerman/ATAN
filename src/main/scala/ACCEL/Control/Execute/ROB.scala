@@ -67,7 +67,7 @@ class ROB(tagCount: Int, tagReadPorts: Int, readPorts: Int)(config: Configuratio
 	io.Writeport.tag.valid := false.B
 	io.Writeport.tag.bits := DontCare
 
-  val Map = Reg(Vec(tagCount,new mapping()))
+  val Map = RegInit(VecInit.fill(tagCount)(0.U.asTypeOf(new mapping())))
 
   io.debug := Map
 

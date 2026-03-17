@@ -23,7 +23,7 @@ class YFile(implicit c: Configuration) extends Module {
  
   val moduleArray = Seq.fill(c.dataBusSize)(Module(new BufferFIFO(c.grainFIFOSize, UInt(8.W))))
 
-  val YACT = Reg(Vec(c.dataBusSize,UInt(1.W)))
+  val YACT = RegInit(VecInit.fill(c.dataBusSize)(0.U(1.W)))
   //val YEn = Reg(Vec(c.dataBusSize,UInt(1.W)))
   
   for(i <- 0 until c.dataBusSize){

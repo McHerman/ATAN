@@ -38,13 +38,13 @@ class ROBFetch(implicit c: Configuration) extends Module {
 
   io.issueStream.foreach{element => element.valid := false.B}
 
-  val inReg = Reg(new DecodePackage)
+  val inReg = RegInit(0.U.asTypeOf(new DecodePackage))
 
   val stall = WireDefault(false.B)
   val inputStall = WireDefault(false.B)
   val assignValid = WireDefault(false.B)
 
-  val issueReg = Reg(new IssuePackage)
+  val issueReg = RegInit(0.U.asTypeOf(new IssuePackage))
 
   when(!inputStall){
     io.instructionStream.ready := true.B

@@ -98,7 +98,7 @@ class ATA8Test extends AnyFreeSpec with Matchers with ChiselSim {
     //val n = 16
 
     simulate(new ATA8(Configuration.test())) { dut =>
-      val source = Source.fromFile("testProgram_Out_bin.txt")
+      val source = Source.fromResource("testProgram_Out_bin.txt")
 
       dut.io.AXIST_inInst.tready.expect(true.B)
       dut.io.AXIST_inData.tready.expect(false.B)

@@ -23,7 +23,7 @@ class ACCUFile(val hasDelay: Boolean)(implicit c: Configuration) extends Module 
 
   val moduleArray = Seq.fill(c.dataBusSize)(Module(new BufferFIFO(c.grainFIFOSize, UInt(c.arithDataWidth.W))))
 
-  val ACCUAct = Reg(Vec(c.dataBusSize,UInt(1.W)))
+  val ACCUAct = RegInit(VecInit.fill(c.dataBusSize)(0.U(1.W)))
 
   val activateIn = Wire(Bool())
   val ActDReg = RegInit(false.B)

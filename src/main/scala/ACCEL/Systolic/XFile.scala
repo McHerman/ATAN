@@ -16,7 +16,7 @@ class XFile(implicit c: Configuration) extends Module {
   })
 
   val moduleArray = Seq.fill(c.dataBusSize)(Module(new BufferFIFO(c.grainFIFOSize, UInt(8.W))))
-  val XACT = Reg(Vec(c.dataBusSize,UInt(1.W)))
+  val XACT = RegInit(VecInit.fill(c.dataBusSize)(0.U(1.W)))
   
   for(i <- 0 until c.dataBusSize){
     if(i == 0){
