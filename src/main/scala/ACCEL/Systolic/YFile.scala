@@ -6,7 +6,7 @@ import chisel3.util._
 class YFile(implicit c: Configuration) extends Module {
   var addr_width = log2Ceil(c.grainFIFOSize)
   val io = IO(new Bundle {
-    val Out = Output(Vec(c.dataBusSize, new PEY(c.arithDataWidth,1))) // TODO: change dis shit
+    val Out = Output(Vec(c.dataBusSize, new PEY(c.accDataWidth,1)))
     val Activate = Input(Bool())
     val ActivateOut = Output(Bool())
     //val Enable = Input(Bool())

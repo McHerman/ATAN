@@ -7,7 +7,7 @@ class SysDMA(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(new DMARead)
     val scratchIn = new ReadportScratch
-    val writePort = Decoupled(Vec(c.dataBusSize,UInt(8.W))) 
+    val writePort = Decoupled(Vec(c.dataBusSize,UInt(c.arithDataWidth.W))) 
   })
 
   io.in.request.ready := false.B

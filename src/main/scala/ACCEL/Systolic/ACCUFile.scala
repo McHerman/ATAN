@@ -6,7 +6,7 @@ import chisel3.util._
 class ACCUFile(val hasDelay: Boolean)(implicit c: Configuration) extends Module {
   var addr_width = log2Ceil(c.grainACCUSize)
   val io = IO(new Bundle {
-    val In = Input(Vec(c.dataBusSize, new PEY(c.arithDataWidth,1)))
+    val In = Input(Vec(c.dataBusSize, new PEY(c.accDataWidth,1)))
     val Activate = Input(Bool())
     val ActivateOut = Output(Bool())
     val Shift = Input(Bool())

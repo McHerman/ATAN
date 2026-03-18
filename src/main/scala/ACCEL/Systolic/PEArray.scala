@@ -7,8 +7,8 @@ class PEArray(val size: Int)(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
     val x = Input(Vec(size, new PEX(c.arithDataWidth)))
     val xOut = Output(Vec(size, new PEX(c.arithDataWidth)))
-    val y = Input(Vec(size, new PEY(c.arithDataWidth,1)))
-    val yOut = Output(Vec(size, new PEY(c.arithDataWidth,1)))
+    val y = Input(Vec(size, new PEY(c.accDataWidth,1)))
+    val yOut = Output(Vec(size, new PEY(c.accDataWidth,1)))
     val ctrl = Input(new Bundle{val state = UInt(1.W); val shift = Bool()})
   })
 

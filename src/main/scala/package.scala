@@ -12,14 +12,17 @@ package object ATA8 {
     grainFIFOSize: Int,
     grainACCUSize: Int,
     arithDataWidth: Int,
+    accDataWidth: Int,
     modeWidth: Int,
     tagCount: Int,
     addrWidth: Int,
-    dataBusSize: Int,
-    fixedpoint: Boolean
+    dataBusSize: Int
   ){
     val tagWidth =  log2Ceil(tagCount)
     val grainSizeWidth = log2Ceil(grainDim)
+    val accDataBytes = accDataWidth / 8
+    require(accDataWidth >= arithDataWidth, "accDataWidth must be >= arithDataWidth")
+    require(accDataWidth % 8 == 0, "accDataWidth must be a multiple of 8")
   }
 
   object Configuration {
@@ -33,11 +36,11 @@ package object ATA8 {
         64,  // grainFIFOSize
         64,  // grainACCUSize
         8,    // arithDataWidth
+        32,   // accDataWidth
         1,    // modeWidth
         8,    // tagCount
         16,   // addrWidth
-        8,     // dataBusSize
-        true
+        8     // dataBusSize
       )
     }
     def sys16(): Configuration = {
@@ -50,11 +53,11 @@ package object ATA8 {
         64,  // grainFIFOSize
         64,  // grainACCUSize
         8,    // arithDataWidth
+        32,   // accDataWidth
         1,    // modeWidth
         8,    // tagCount
         16,   // addrWidth
-        8,     // dataBusSize
-        true
+        8     // dataBusSize
       )
     }
     def sys16_largeMem(): Configuration = {
@@ -67,11 +70,11 @@ package object ATA8 {
         64,  // grainFIFOSize
         64,  // grainACCUSize
         8,    // arithDataWidth
+        32,   // accDataWidth
         1,    // modeWidth
         16,    // tagCount
         16,   // addrWidth
-        8,     // dataBusSize
-        true
+        8     // dataBusSize
       )
     }
     def sys32(): Configuration = {
@@ -84,11 +87,11 @@ package object ATA8 {
         64,  // grainFIFOSize
         64,  // grainACCUSize
         8,    // arithDataWidth
+        32,   // accDataWidth
         1,    // modeWidth
         8,    // tagCount
         16,   // addrWidth
-        8,     // dataBusSize
-        true
+        8     // dataBusSize
       )
     }
     def test(): Configuration = {
@@ -101,11 +104,11 @@ package object ATA8 {
         64,  // grainFIFOSize
         64,  // grainACCUSize
         8,    // arithDataWidth
+        32,   // accDataWidth
         1,    // modeWidth
         8,    // tagCount
         16,   // addrWidth
-        8,     // dataBusSize
-        false
+        8     // dataBusSize
       )
     }
     def test16(): Configuration = {
@@ -118,11 +121,11 @@ package object ATA8 {
         64,  // grainFIFOSize
         64,  // grainACCUSize
         8,    // arithDataWidth
+        32,   // accDataWidth
         1,    // modeWidth
         8,    // tagCount
         16,   // addrWidth
-        8,     // dataBusSize
-        false
+        8     // dataBusSize
       )
     }
     def sys16_largeMem_test(): Configuration = {
@@ -135,11 +138,11 @@ package object ATA8 {
         64,  // grainFIFOSize
         64,  // grainACCUSize
         8,    // arithDataWidth
+        32,   // accDataWidth
         1,    // modeWidth
         16,    // tagCount
         16,   // addrWidth
-        8,     // dataBusSize
-        false
+        8     // dataBusSize
       )
     }
   }
