@@ -30,7 +30,7 @@ class OSTest extends AnyFreeSpec with Matchers with ChiselSim {
       }
   }
 
-  implicit val c = Configuration.test()
+  implicit val c = Configuration.default()
 
   "OSTest should pass" in {
     simulate(new Grain()) { dut =>

@@ -49,7 +49,7 @@ class LoadTest extends AnyFreeSpec with Matchers with ChiselSim {
     //val n = 2 + Random.nextInt(30)
     //val n = 16
 
-	implicit val c = Configuration.test()
+	implicit val c = Configuration.default()
 
     simulate(new Load()) { dut =>
 			dut.io.instructionStream.ready.expect(true.B)

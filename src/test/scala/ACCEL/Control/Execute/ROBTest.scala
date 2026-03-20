@@ -38,7 +38,7 @@ class ROBTest extends AnyFreeSpec with Matchers with ChiselSim {
   //implicit val Config = Configuration.default().copy(issueQueueSize = n, simulation = true)
 
   "ROB should allocate n, fetch, and deallocate" in {
-    simulate(new ROB(8,1,0)(Configuration.test())) { dut =>
+    simulate(new ROB(8,1,0)(Configuration.default())) { dut =>
       for(i <- 0 until n){
         dut.io.Writeport.addr.ready.expect(true.B)
 

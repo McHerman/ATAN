@@ -79,7 +79,7 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
     //val n = 2 + Random.nextInt(30)
     //val n = 16
 
-    implicit val c = Configuration.test()
+    implicit val c = Configuration.default()
 
     simulate(new FrontEnd()) { dut =>
 
@@ -166,7 +166,7 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
     //val n = 2 + Random.nextInt(30)
     //val n = 16
 
-    implicit val c = Configuration.test()
+    implicit val c = Configuration.default()
 
     simulate(new FrontEnd()) { dut =>
 

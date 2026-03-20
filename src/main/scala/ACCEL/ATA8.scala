@@ -84,7 +84,7 @@ class ATA8(config: Configuration) extends Module {
 
 object ATA8 extends App {
   _root_.circt.stage.ChiselStage.emitSystemVerilogFile(
-    new ATA8(Configuration.sys16_largeMem()),
+    new ATA8(Configuration.default()),
     firtoolOpts = Array("-disable-all-randomization", "-strip-debug-info")
   )
 }

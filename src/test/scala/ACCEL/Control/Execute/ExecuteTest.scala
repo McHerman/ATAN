@@ -34,7 +34,7 @@ class ExecuteTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   //implicit val Config = Configuration.default().copy(issueQueueSize = n, simulation = true)
 
-  implicit val c = Configuration.test()
+  implicit val c = Configuration.default()
 
   "Execute should execute with 1 missing depend" in {
     simulate(new Execute()) { dut =>
