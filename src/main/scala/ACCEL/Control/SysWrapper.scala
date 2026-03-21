@@ -6,8 +6,8 @@ import chisel3.util._
 class SysWrapper(implicit c: Configuration) extends Module {  
   val io = IO(new Bundle {
     val in = new Readport(new ExecuteInstIssue,0)
-    val scratchOut = Vec(c.grainDim, new WriteportScratch)
-    val scratchIn = Vec(2,Vec(c.grainDim, new ReadportScratch))
+    val scratchOut = Vec(c.grainDim, new TilelinkPort)
+    val scratchIn = Vec(2, Vec(c.grainDim, new TilelinkPort))
     val event = Valid(new Event)
     val debug = new ExeDebug
   })

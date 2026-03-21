@@ -105,7 +105,6 @@ class SysOP(implicit c: Configuration) extends Bundle {
 class DMARead(implicit c: Configuration) extends Bundle {
   val request = Decoupled(new Bundle{
     val addr = UInt(16.W)
-    val burstStride = UInt(8.W)
     val burstCnt = UInt(8.W)
     val burstSize = UInt(log2Ceil(c.dataBusSize + 1).W)
   })
@@ -117,7 +116,6 @@ class DMARead(implicit c: Configuration) extends Bundle {
 class DMAWrite(implicit c: Configuration) extends Bundle {
   val request = Decoupled(new Bundle{
     val addr = UInt(16.W)
-    val burstStride = UInt(8.W)
     val burstCnt = UInt(8.W)
     val burstSize = UInt(log2Ceil(c.dataBusSize + 1).W)
     val tag = UInt(c.tagWidth.W)

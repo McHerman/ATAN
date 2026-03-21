@@ -99,8 +99,6 @@ class SysController(implicit c: Configuration) extends Module {
             val addrSum = if (index == 0) 0.U else readSizes.take(index).reduce(_ + _) // TODO: Kinda questionable, check later
 
             dma.request.bits.addr := addrs.addr + addrSum
-            
-            dma.request.bits.burstStride := reg.size
             dma.request.bits.burstSize := size
             dma.request.bits.burstCnt := reg.size
             dma.request.valid := true.B
@@ -152,8 +150,6 @@ class SysController(implicit c: Configuration) extends Module {
         val addrSum = if (index == 0) 0.U else writeSizes.take(index).reduce(_ + _) // TODO: Kinda questionable, check later
 
         dma.request.bits.addr := op.addr + addrSum
-      
-        dma.request.bits.burstStride := op.size
         dma.request.bits.burstSize := size
         dma.request.bits.burstCnt := op.size
         dma.request.bits.tag := op.tag

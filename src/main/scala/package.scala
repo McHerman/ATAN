@@ -16,7 +16,8 @@ package object ATA8 {
     modeWidth: Int,
     tagCount: Int,
     addrWidth: Int,
-    dataBusSize: Int
+    dataBusSize: Int,
+    sourceWidth: Int
   ){
     val tagWidth =  log2Ceil(tagCount)
     val grainSizeWidth = log2Ceil(grainDim)
@@ -40,7 +41,8 @@ package object ATA8 {
         1,    // modeWidth
         8,    // tagCount
         16,   // addrWidth
-        8     // dataBusSize
+        8,    // dataBusSize
+        1     // sourceWidth
       )
     }
   }

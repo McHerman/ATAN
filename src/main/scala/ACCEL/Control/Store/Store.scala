@@ -9,7 +9,7 @@ class Store(implicit c: Configuration) extends Module {
     val instructionStream = Flipped(Decoupled(new StoreInstIssue))
 
     val AXIST = new AXIST_2(64,2,1,1,1) //TODO: add to config 
-    val readPort = new ReadportScratch
+    val readPort = new TilelinkPort
 
 		val event = Vec(2,Flipped(Valid(new Event())))
     val debug = new StoreDebug

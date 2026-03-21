@@ -9,7 +9,7 @@ class Load(implicit c: Configuration) extends Module {
     val instructionStream = Flipped(Decoupled(new LoadInstIssue))
 
     val AXIST = Flipped(new AXIST_2(64,2,1,1,1))
-    val scratchOut = new WriteportScratch
+    val scratchOut = new TilelinkPort
 
     val event = Valid(new Event())
     val debug = new LoadDebug

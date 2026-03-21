@@ -3,61 +3,76 @@ package ATA8
 import chisel3._
 import chisel3.util._
 
-class WriteBurstHandler(implicit c: Configuration) extends Module {
+class TilelinkWriteHandler(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
-    val scratchWriteport = Flipped(new WriteportScratch)
-    val writePort = Decoupled(new Writeport(new Bundle{val writeData = Vec(c.dataBusSize,UInt(8.W)); val strb = Vec(c.dataBusSize, Bool())},16))
+    val tl = Flipped(new TilelinkPort)
+    val mem = Decoupled(new Writeport(new Bundle { val writeData = Vec(c.dataBusSize, UInt(8.W)); val strb = Vec(c.dataBusSize, Bool()) }, 16))
   })
 
-  // Set default values
-  io.writePort.valid := false.B
-  io.writePort.bits := DontCare
-  io.scratchWriteport.request.ready := false.B
-  io.scratchWriteport.data.ready := false.B
+  // Defaults
+  io.tl.a.ready := false.B
+  io.tl.d.valid := false.B
+  io.tl.d.bits := DontCare
+  io.mem.valid := false.B
+  io.mem.bits := DontCare
 
   val isLocked = RegInit(false.B)
+  val addrReg = Reg(UInt(c.addrWidth.W))
+  val sizeReg = Reg(UInt(24.W))
+  val beatCnt = Reg(UInt(24.W))
+  val firstBeat = RegInit(false.B)
 
-  val reg = Reg(io.scratchWriteport.request.bits.cloneType)
+  when(!isLocked) {
+    // Accept first A beat and write it
+    io.tl.a.ready := io.mem.ready
+    when(io.tl.a.fire) {
+      io.mem.valid := true.B
+      io.mem.bits.addr := io.tl.a.bits.address
+      io.mem.bits.data.writeData := io.tl.a.bits.data.asTypeOf(Vec(c.dataBusSize, UInt(8.W)))
+      io.mem.bits.data.strb := VecInit(io.tl.a.bits.mask.asBools)
 
-  io.scratchWriteport.request.ready := !isLocked
-
-  when(io.scratchWriteport.request.fire) {
-    isLocked := true.B
-
-    reg.addr := io.scratchWriteport.request.bits.addr
-    reg.burstSize := io.scratchWriteport.request.bits.burstSize
-    reg.burstStride := io.scratchWriteport.request.bits.burstStride
-    reg.burstCnt := io.scratchWriteport.request.bits.burstCnt - 1.U
-    reg.burstMode := io.scratchWriteport.request.bits.burstMode
-  }
-
-  when(isLocked) {
-    when(io.writePort.ready) {
-      io.scratchWriteport.data.ready := true.B
-      io.writePort.valid := io.scratchWriteport.data.valid
-      io.writePort.bits.addr := reg.addr
-      io.writePort.bits.data.writeData := io.scratchWriteport.data.bits.writeData
-      io.writePort.bits.data.strb := io.scratchWriteport.data.bits.strb
-
-      when(io.writePort.fire) {
-        reg.addr := reg.addr + reg.burstStride
-
-        when(!reg.burstMode){
-          reg.burstCnt := reg.burstCnt - 1.U
-        }
+      when(io.tl.a.bits.size > 1.U) {
+        isLocked := true.B
+        addrReg := io.tl.a.bits.address + 1.U
+        sizeReg := io.tl.a.bits.size
+        beatCnt := io.tl.a.bits.size - 2.U // first beat already consumed
+      }.otherwise {
+        // Single beat - send AccessAck immediately
+        firstBeat := true.B
       }
     }
+  }.otherwise {
+    // Accept remaining A beats
+    io.tl.a.ready := io.mem.ready
+    when(io.tl.a.fire) {
+      io.mem.valid := true.B
+      io.mem.bits.addr := addrReg
+      io.mem.bits.data.writeData := io.tl.a.bits.data.asTypeOf(Vec(c.dataBusSize, UInt(8.W)))
+      io.mem.bits.data.strb := VecInit(io.tl.a.bits.mask.asBools)
 
-    // in streaming mode, the burst when exit out then the master asserts last
+      addrReg := addrReg + 1.U
+      beatCnt := beatCnt - 1.U
 
-    when(!reg.burstMode){
-      when(reg.burstCnt === 0.U && io.scratchWriteport.data.bits.last) { //FIXME: Not brilliant, fix
+      when(beatCnt === 0.U) {
         isLocked := false.B
+        firstBeat := true.B // trigger AccessAck next cycle
       }
-    }.otherwise{
-      when(io.scratchWriteport.data.bits.last) {
-        isLocked := false.B
-      }
+    }
+  }
+
+  // Send AccessAck on D channel after all beats written
+  when(firstBeat) {
+    io.tl.d.valid := true.B
+    io.tl.d.bits.opcode := TilelinkOpcodes.AccessAck
+    io.tl.d.bits.param := 0.U
+    io.tl.d.bits.size := sizeReg
+    io.tl.d.bits.source := 0.U
+    io.tl.d.bits.sink := 0.U
+    io.tl.d.bits.denied := 0.U
+    io.tl.d.bits.data := 0.U
+    io.tl.d.bits.corrupt := 0.U
+    when(io.tl.d.fire) {
+      firstBeat := false.B
     }
   }
 }

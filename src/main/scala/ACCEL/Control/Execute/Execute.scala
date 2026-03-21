@@ -8,8 +8,8 @@ class Execute(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
     val instructionStream = Flipped(Decoupled(new ExecuteInstIssue))
 
-    val scratchOut = Vec(c.grainDim,new WriteportScratch)
-    val scratchIn = Vec(2,new ReadportScratch)
+    val scratchOut = Vec(c.grainDim, new TilelinkPort)
+    val scratchIn = Vec(2, new TilelinkPort)
 
     val eventIn = Flipped(Valid(new Event()))
     val eventOut = Valid(new Event)

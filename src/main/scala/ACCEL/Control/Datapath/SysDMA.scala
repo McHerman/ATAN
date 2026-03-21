@@ -2,20 +2,20 @@ package ATA8
 
 import chisel3._
 import chisel3.util._
-  
-class SysDMA(implicit c: Configuration) extends Module {  
+
+class SysDMA(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(new DMARead)
-    val scratchIn = new ReadportScratch
-    val writePort = Decoupled(Vec(c.dataBusSize,UInt(c.arithDataWidth.W))) 
+    val scratchIn = new TilelinkPort
+    val writePort = Decoupled(Vec(c.dataBusSize, UInt(c.arithDataWidth.W)))
   })
 
   io.in.request.ready := false.B
 
-  io.scratchIn.request.valid := false.B
-  io.scratchIn.request.bits := DontCare
+  io.scratchIn.a.valid := false.B
+  io.scratchIn.a.bits := DontCare
 
-  io.scratchIn.data.ready := false.B
+  io.scratchIn.d.ready := false.B
 
   io.writePort.valid := false.B
   io.writePort.bits := DontCare
@@ -23,64 +23,70 @@ class SysDMA(implicit c: Configuration) extends Module {
   val StateReg = RegInit(0.U(4.W))
   val reg = Reg(io.in.request.bits.cloneType)
 
-  val burstCNT = RegInit(0.U(8.W))
+  val beatCnt = RegInit(0.U(24.W))
 
-  io.in.response.valid := StateReg =/= 0.U //Indicates to controller that the DMA is invoked and working. Used for determining when read is complete in SysController
+  io.in.response.valid := StateReg =/= 0.U
   io.in.response.bits.completed := false.B
 
-  switch(StateReg){
-    is(0.U){ // Recieves operation
+  switch(StateReg) {
+    is(0.U) { // Receives operation
       io.in.request.ready := true.B
-      
-      when(io.in.request.valid){
+
+      when(io.in.request.valid) {
         reg := io.in.request.bits
         StateReg := 1.U
       }
     }
-    is(1.U){ // Requests Scratchpad transfer
-      io.scratchIn.request.bits.addr := reg.addr
+    is(1.U) { // Send Get on A channel
+      io.scratchIn.a.bits.opcode := TilelinkOpcodes.Get
+      io.scratchIn.a.bits.param := 0.U
+      io.scratchIn.a.bits.address := reg.addr
+      io.scratchIn.a.bits.size := reg.burstCnt
+      io.scratchIn.a.bits.source := 0.U
+      io.scratchIn.a.bits.mask := HelperFunctions.uintToBoolVec(reg.burstSize, c.dataBusSize).asUInt
+      io.scratchIn.a.bits.data := 0.U
+      io.scratchIn.a.bits.corrupt := 0.U
 
-      io.scratchIn.request.bits.burstSize := reg.burstSize
-      io.scratchIn.request.bits.burstStride := reg.burstStride
-      io.scratchIn.request.bits.burstCnt := reg.burstCnt
-      
-      when(reg.burstSize =/= 0.U){ //FIXME: Incredibly hacky
-        when(io.scratchIn.request.ready){
-          io.scratchIn.request.valid := true.B
+      when(reg.burstSize =/= 0.U) {
+        io.scratchIn.a.valid := true.B
+        when(io.scratchIn.a.fire) {
+          beatCnt := 0.U
           StateReg := 2.U
-        } 
-      }.otherwise{
+        }
+      }.otherwise {
         StateReg := 3.U
       }
     }
-    is(2.U){ // Writes data into Systolic array buffers
-      when(io.writePort.ready){
-        io.scratchIn.data.ready := true.B
-        
-        when(io.scratchIn.data.valid){
-          val mask = HelperFunctions.uintToBoolVec(reg.burstSize, c.dataBusSize) 
+    is(2.U) { // Accept D beats, write to systolic buffers
+      when(io.writePort.ready) {
+        io.scratchIn.d.ready := true.B
 
-          (io.writePort.bits zip io.scratchIn.data.bits.readData zip mask).foreach{case ((port,data),mask) => 
-            when(mask){
+        when(io.scratchIn.d.valid) {
+          val mask = HelperFunctions.uintToBoolVec(reg.burstSize, c.dataBusSize)
+          val dataVec = io.scratchIn.d.bits.data.asTypeOf(Vec(c.dataBusSize, UInt(8.W)))
+
+          (io.writePort.bits zip dataVec zip mask).foreach { case ((port, data), m) =>
+            when(m) {
               port := data
-            }.otherwise{
+            }.otherwise {
               port := 0.U
             }
           }
 
           io.writePort.valid := true.B
+          beatCnt := beatCnt + 1.U
 
-          when(io.scratchIn.data.bits.last){
+          when(beatCnt === (reg.burstCnt - 1.U)) {
             StateReg := 3.U
           }
         }
       }
     }
-    is(3.U){ // Waits for Controller to agnoledge finis
+    is(3.U) { // Wait for Controller to acknowledge finish
       io.in.response.valid := true.B
-      io.in.response.bits.completed := true.B // Write completed succesfully 
+      io.in.response.bits.completed := true.B
 
-      when(io.in.response.ready){ 
+      when(io.in.response.ready) {
         StateReg := 0.U
       }
     }
