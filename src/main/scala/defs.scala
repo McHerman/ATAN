@@ -21,6 +21,3 @@ class Writeport[T <: Data](private val dataType: T, val addrWidth: Int) extends 
   val addr  = Output(UInt(addrWidth.W))
   val data = Output(dataType.cloneType)
 }
-
-
-
