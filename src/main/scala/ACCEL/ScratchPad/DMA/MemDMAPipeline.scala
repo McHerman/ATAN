@@ -27,7 +27,7 @@ class MemDMAPipeline(implicit c: Configuration) extends Module {
   io.tl.d.ready := false.B
   io.tl.a.bits := DontCare
 
-  io.dataIn.ready := true.B
+  io.dataIn.ready := false.B
   io.dataOut.valid := false.B
   io.dataOut.bits := DontCare
 
@@ -49,7 +49,7 @@ class MemDMAPipeline(implicit c: Configuration) extends Module {
         when(io.interface.descriptor.bits(0).writeEn){ //Write
           StateReg := 1.U
         }.otherwise{
-          StateReg := 6.U
+          StateReg := 5.U
         }
       }
     }
@@ -67,6 +67,8 @@ class MemDMAPipeline(implicit c: Configuration) extends Module {
       io.tl.a.bits.mask := HelperFunctions.uintToBoolVec(reg.size, c.dataBusSize).asUInt
 
       when(io.tl.a.fire) {
+        io.dataIn.ready := true.B
+
         beatCnt := 1.U
 
         when(reg.size > 1.U) {
@@ -79,13 +81,14 @@ class MemDMAPipeline(implicit c: Configuration) extends Module {
     }
     is(2.U) { // Send remaining A beats
 
-      when(io.dataIn.ready){ // Check that buffer has data
+      when(io.dataIn.valid){ // Check that buffer has data
         io.tl.a.valid := true.B
       }
 
       io.tl.a.bits.opcode := TilelinkOpcodes.PutFullData
       io.tl.a.bits.param := 0.U
-      io.tl.a.bits.address := reg.addr + beatCnt
+      //io.tl.a.bits.address := reg.addr + beatCnt
+      io.tl.a.bits.address := reg.addr
       io.tl.a.bits.size := reg.size
       io.tl.a.bits.source := 0.U
       io.tl.a.bits.data := io.dataIn.bits
@@ -93,6 +96,9 @@ class MemDMAPipeline(implicit c: Configuration) extends Module {
       io.tl.a.bits.corrupt := 0.U
 
       when(io.tl.a.fire) {
+
+        io.dataIn.ready := true.B
+
         when(beatCnt < (reg.size - 1.U)) {
           beatCnt := beatCnt + 1.U
         }.otherwise {
@@ -128,30 +134,33 @@ class MemDMAPipeline(implicit c: Configuration) extends Module {
       io.tl.a.bits.address := reg.addr
       io.tl.a.bits.size := reg.size
       io.tl.a.bits.source := 0.U
+      io.tl.a.bits.corrupt := 0.U
 
       when(io.tl.a.fire) {
-        beatCnt := 1.U
+        beatCnt := 0.U
         StateReg := 6.U
       }
     }
     is(6.U) { // Read data beats
 
-      when(io.dataOut.ready){ // Check that buffer has data
+      when(io.dataOut.ready){ // Check that buffer has space 
         io.tl.d.ready := true.B
       }
 
-      io.dataOut.valid := io.tl.d.valid
-
-      io.tl.a.bits.opcode := TilelinkOpcodes.PutFullData
+      io.tl.a.bits.opcode := TilelinkOpcodes.Get
       io.tl.a.bits.param := 0.U
-      io.tl.a.bits.address := reg.addr + beatCnt
+      io.tl.a.bits.address := reg.addr
       io.tl.a.bits.size := reg.size
       io.tl.a.bits.source := 0.U
-      io.tl.a.bits.data := io.dataIn.bits
+      //io.tl.a.bits.data := io.dataIn.bits
       //io.tl.a.bits.mask := HelperFunctions.uintToBoolVec(reg.size, c.dataBusSize).asUInt
       io.tl.a.bits.corrupt := 0.U
 
-      when(io.tl.a.fire) {
+      when(io.tl.d.fire) {
+
+        io.dataOut.valid := true.B
+        io.dataOut.bits := io.tl.d.bits.data
+
         when(beatCnt < (reg.size - 1.U)) {
           beatCnt := beatCnt + 1.U
         }.otherwise {

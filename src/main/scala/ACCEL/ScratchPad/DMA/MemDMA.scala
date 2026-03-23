@@ -43,19 +43,12 @@ class MemDMA(implicit c: Configuration) extends Module {
   BtoA.io.ReadData.request.bits.addr := DontCare
 
 
-
-
-  A.io.dataIn.valid := BtoA.io.ReadData.response.valid
+  A.io.dataIn.valid := BtoA.io.ReadData.request.ready
   A.io.dataIn.bits := BtoA.io.ReadData.response.bits.readData
 
 
-  B.io.dataIn.valid := AtoB.io.ReadData.response.valid
+  B.io.dataIn.valid := AtoB.io.ReadData.request.ready
   B.io.dataIn.bits := AtoB.io.ReadData.response.bits.readData
-
-
-
-
-
 
 
 

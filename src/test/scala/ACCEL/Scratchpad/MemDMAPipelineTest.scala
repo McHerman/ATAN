@@ -152,14 +152,19 @@ class MemDMAPipelineTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       // --- Beat 0 (state 1) ---
       dut.io.dataIn.bits.poke(beatData(0).U)
+      dut.io.dataIn.valid.poke(true.B)
 
       waitFor(dut.io.tl.a.valid.peek().litToBoolean, "tl.a.valid for beat 0")
+
+      dut.io.tl.a.ready.poke(true.B)
+
+      dut.io.dataIn.ready.expect(true.B)
 
       dut.io.tl.a.bits.opcode.expect(0.U) // PutFullData
       dut.io.tl.a.bits.address.expect(baseAddr.U)
       dut.io.tl.a.bits.data.expect(beatData(0).U)
 
-      dut.io.tl.a.ready.poke(true.B)
+
       dut.clock.step() // A fires, size>1 so transition to state 2, beatCnt=1
       dut.io.tl.a.ready.poke(false.B)
 
@@ -169,11 +174,13 @@ class MemDMAPipelineTest extends AnyFreeSpec with Matchers with ChiselSim {
       // overridden by the BufferFIFO connection.
       for (beat <- 1 until size) {
         dut.io.dataIn.bits.poke(beatData(beat).U)
+        dut.io.dataIn.valid.poke(true.B)
 
         waitFor(dut.io.tl.a.valid.peek().litToBoolean, s"tl.a.valid for beat $beat")
 
         dut.io.tl.a.bits.opcode.expect(0.U) // PutFullData
-        dut.io.tl.a.bits.address.expect((baseAddr + beat).U)
+        //dut.io.tl.a.bits.address.expect((baseAddr + beat).U)
+        dut.io.tl.a.bits.address.expect(baseAddr.U)
         dut.io.tl.a.bits.data.expect(beatData(beat).U)
 
         dut.io.tl.a.ready.poke(true.B)
