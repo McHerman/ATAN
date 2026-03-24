@@ -53,7 +53,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       port.a.bits.mask.poke(0.U)
       port.a.bits.corrupt.poke(0.U)
 
-      dut.clock.step()
+      dut.clock.step(2)
 
       port.a.valid.poke(false.B)
 
@@ -93,7 +93,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       port.a.bits.mask.poke(0.U)
       port.a.bits.corrupt.poke(0.U)
 
-      dut.clock.step()
+      dut.clock.step(2)
 
       port.a.valid.poke(false.B)
 
@@ -162,7 +162,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       port.a.bits.mask.poke(0.U)
       port.a.bits.corrupt.poke(0.U)
 
-      dut.clock.step()
+      dut.clock.step(2)
 
       port.a.valid.poke(false.B)
 
@@ -200,7 +200,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.inPorts(0).a.bits.mask.poke(0.U)
       dut.io.inPorts(0).a.bits.corrupt.poke(0.U)
 
-      dut.clock.step()
+      dut.clock.step(2)
 
       dut.io.inPorts(0).a.valid.poke(false.B)
 
@@ -228,7 +228,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.inPorts(1).a.bits.mask.poke(0.U)
       dut.io.inPorts(1).a.bits.corrupt.poke(0.U)
 
-      dut.clock.step()
+      dut.clock.step(2)
 
       dut.io.inPorts(1).a.valid.poke(false.B)
 
@@ -316,7 +316,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.inPorts(1).a.bits.mask.poke(0.U)
       dut.io.inPorts(1).a.bits.corrupt.poke(0.U)
 
-      dut.clock.step()
+      dut.clock.step(2)
 
       dut.io.inPorts(1).a.valid.poke(false.B)
 
@@ -355,7 +355,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.inPorts(1).a.bits.mask.poke(0.U)
       dut.io.inPorts(1).a.bits.corrupt.poke(0.U)
 
-      dut.clock.step()
+      dut.clock.step(2)
 
       dut.io.inPorts(1).a.valid.poke(false.B)
 
@@ -383,7 +383,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.inPorts(1).a.bits.mask.poke(0.U)
       dut.io.inPorts(1).a.bits.corrupt.poke(0.U)
 
-      dut.clock.step()
+      dut.clock.step(2)
 
       dut.io.inPorts(1).a.valid.poke(false.B)
 

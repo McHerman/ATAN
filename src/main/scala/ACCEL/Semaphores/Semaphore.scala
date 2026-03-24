@@ -47,7 +47,7 @@ class Semaphore()(implicit c: Configuration) extends Module {
 
           switch(port.a.bits.param){
             is(ArithmeticDataParam.AQGREQ){
-              statereg := acquireReturn 
+              statereg := acquire 
             }
             is(ArithmeticDataParam.SUBU){
               statereg := decrement 
