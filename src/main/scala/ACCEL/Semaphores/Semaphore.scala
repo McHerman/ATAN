@@ -30,11 +30,34 @@ class Semaphore()(implicit c: Configuration) extends Module {
 
   val idle :: acquire :: acquireReturn :: decrement :: Nil = Enum(4)
 
-  val stateregs = RegInit(VecInit(Seq.fill(2)(idle)))
-  val inputregs = Reg(Vec(2,io.inPorts(0).a.bits.cloneType))
+  val stateregs        = RegInit(VecInit(Seq.fill(2)(idle)))
+  val inputregs        = Reg(Vec(2, io.inPorts(0).a.bits.cloneType))
+  val decrementApplied = RegInit(VecInit(Seq.fill(2)(false.B)))
+  val newValRegs       = Reg(Vec(2, UInt(16.W)))
+
+  // Explicit write-request wires: pulled high from within state logic
+  val reqFull  = Wire(Vec(2, Bool())); reqFull.foreach(_  := false.B)
+  val reqEmpty = Wire(Vec(2, Bool())); reqEmpty.foreach(_ := false.B)
+
+  // Round-robin arbiter: token toggles every cycle
+  val rrToken = RegInit(0.U(1.W))
+  rrToken := ~rrToken
+
+  // Contention: all ports are requesting the same register simultaneously
+  val fullContention  = reqFull.reduce(_ && _)
+  val emptyContention = reqEmpty.reduce(_ && _)
+
+  // Grant if requesting, and either there is no contention or it is this port's turn
+  val grantFull  = Wire(Vec(2, Bool()))
+  val grantEmpty = Wire(Vec(2, Bool()))
+  grantFull.zipWithIndex.foreach  { case (g, i) => g := reqFull(i)  && (!fullContention  || rrToken === i.U) }
+  grantEmpty.zipWithIndex.foreach { case (g, i) => g := reqEmpty(i) && (!emptyContention || rrToken === i.U) }
 
   // Dual statemachine
-  ((stateregs zip io.inPorts) zip inputregs).foreach { case ((statereg, port), reg) =>
+  stateregs.indices.foreach { idx =>
+    val (statereg, port, reg, applied) =
+      (stateregs(idx), io.inPorts(idx), inputregs(idx), decrementApplied(idx))
+
     switch(statereg){
       is(idle){
         port.a.ready := true.B
@@ -93,23 +116,43 @@ class Semaphore()(implicit c: Configuration) extends Module {
       }
       is(decrement){
         val inputReg = Mux(reg.address(0), emptyReg, fullReg)
+        val newVal   = inputReg - reg.data
 
-        val newVal = inputReg - reg.data
-emptyReg := newVal
+        when(!applied) {
+          // Pull request wire high; arbiter decides who gets the grant
+          when(reg.address(0)){
+            reqEmpty(idx) := true.B
+          }.otherwise{
+            reqFull(idx)  := true.B
+          }
 
-        port.d.valid := true.B
+          val granted = Mux(reg.address(0), grantEmpty(idx), grantFull(idx))
+          when(granted) {
+            when(reg.address(0)){
+              emptyReg := newVal
+            }.otherwise{
+              fullReg := newVal
+            }
+            newValRegs(idx) := newVal  // latch result so d.bits.data is stable
+            applied := true.B
+          }
+        }
+
+        // Only present response after the write has been granted and latched
+        port.d.valid := applied
 
         port.d.bits.opcode := TilelinkOpcodes.AccessAckData
-        port.d.bits.param := 0.U 
-        port.d.bits.size := 0.U 
+        port.d.bits.param  := 0.U
+        port.d.bits.size   := 0.U
         port.d.bits.source := reg.source
-        port.d.bits.sink := DontCare // TODO, find some better use for this
+        port.d.bits.sink   := DontCare // TODO, find some better use for this
         port.d.bits.denied := false.B
-        port.d.bits.data := newVal
+        port.d.bits.data   := newValRegs(idx)
         port.d.bits.corrupt := 0.U
 
         when(port.d.fire){
           statereg := idle
+          applied  := false.B
         }
       }
     }
