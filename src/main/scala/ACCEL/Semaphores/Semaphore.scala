@@ -28,9 +28,9 @@ class Semaphore()(implicit c: Configuration) extends Module {
     emptyReg := io.progPort.bits(1)
   }
 
-  val idle :: acquire :: acquireReturn :: decrement :: Nil = Enum(3)  
+  val idle :: acquire :: acquireReturn :: decrement :: Nil = Enum(4)
 
-  val stateregs = Reg(Vec(2,UInt(4.W)))
+  val stateregs = RegInit(VecInit(Seq.fill(2)(idle)))
   val inputregs = Reg(Vec(2,io.inPorts(0).a.bits.cloneType))
 
   // Dual statemachine
@@ -95,7 +95,7 @@ class Semaphore()(implicit c: Configuration) extends Module {
         val inputReg = Mux(reg.address(0), emptyReg, fullReg)
 
         val newVal = inputReg - reg.data
-        emptyReg := newVal
+emptyReg := newVal
 
         port.d.valid := true.B
 
