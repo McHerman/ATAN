@@ -28,7 +28,7 @@ class Semaphore()(implicit c: Configuration) extends Module {
     emptyReg := io.progPort.bits(1)
   }
 
-  val idle :: acquire :: acquireReturn :: decrement :: Nil = Enum(4)
+  val idle :: acquire :: acquireReturn :: decrement :: increment :: Nil = Enum(5)
 
   val stateregs        = RegInit(VecInit(Seq.fill(2)(idle)))
   val inputregs        = Reg(Vec(2, io.inPorts(0).a.bits.cloneType))
@@ -73,7 +73,10 @@ class Semaphore()(implicit c: Configuration) extends Module {
               statereg := acquire 
             }
             is(ArithmeticDataParam.SUBU){
-              statereg := decrement 
+              statereg := decrement
+            }
+            is(ArithmeticDataParam.ADDU){
+              statereg := increment
             }
             /*
             default(){
@@ -146,6 +149,45 @@ class Semaphore()(implicit c: Configuration) extends Module {
         port.d.bits.size   := 0.U
         port.d.bits.source := reg.source
         port.d.bits.sink   := DontCare // TODO, find some better use for this
+        port.d.bits.denied := false.B
+        port.d.bits.data   := newValRegs(idx)
+        port.d.bits.corrupt := 0.U
+
+        when(port.d.fire){
+          statereg := idle
+          applied  := false.B
+        }
+      }
+      is(increment){
+        val inputReg = Mux(reg.address(0), emptyReg, fullReg)
+        val newVal   = inputReg + reg.data
+
+        when(!applied) {
+          when(reg.address(0)){
+            reqEmpty(idx) := true.B
+          }.otherwise{
+            reqFull(idx)  := true.B
+          }
+
+          val granted = Mux(reg.address(0), grantEmpty(idx), grantFull(idx))
+          when(granted) {
+            when(reg.address(0)){
+              emptyReg := newVal
+            }.otherwise{
+              fullReg := newVal
+            }
+            newValRegs(idx) := newVal
+            applied := true.B
+          }
+        }
+
+        port.d.valid := applied
+
+        port.d.bits.opcode := TilelinkOpcodes.AccessAckData
+        port.d.bits.param  := 0.U
+        port.d.bits.size   := 0.U
+        port.d.bits.source := reg.source
+        port.d.bits.sink   := DontCare
         port.d.bits.denied := false.B
         port.d.bits.data   := newValRegs(idx)
         port.d.bits.corrupt := 0.U

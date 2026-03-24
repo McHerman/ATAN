@@ -515,6 +515,134 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
     }
   }
 
+  "ADDU should increment the target register and return the new value" in {
+    implicit val c = Configuration.default()
+    simulate(new Semaphore()) { dut =>
+      defaultPokes(dut)
+      dut.io.progPort.valid.poke(true.B)
+      dut.io.progPort.bits(0).poke(10.U)  // fullReg  = 10
+      dut.io.progPort.bits(1).poke(5.U)   // emptyReg = 5
+      dut.clock.step()
+      dut.io.progPort.valid.poke(false.B)
+
+      //////////////////////////////////////////////////
+
+      val port = dut.io.inPorts(0)
+
+      port.a.ready.expect(true.B)
+      port.a.valid.poke(true.B)
+      port.a.bits.opcode.poke(TilelinkOpcodes.ArithmeticData)
+      port.a.bits.param.poke(ArithmeticDataParam.ADDU)
+      port.a.bits.address.poke(1.U)  // emptyReg
+      port.a.bits.data.poke(7.U)
+      port.a.bits.source.poke(0.U)
+      port.a.bits.size.poke(0.U)
+      port.a.bits.mask.poke(0.U)
+      port.a.bits.corrupt.poke(0.U)
+
+      dut.clock.step()
+      port.a.valid.poke(false.B)
+
+      while (!port.d.valid.peek().litToBoolean) { dut.clock.step() }
+
+      port.d.ready.poke(true.B)
+      port.d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
+      port.d.bits.data.expect(12.U)  // 5 + 7
+
+      dut.clock.step()
+      port.d.ready.poke(false.B)
+
+      //////////////////////////////////////////////////
+
+      // Verify the new value persisted
+      port.a.valid.poke(true.B)
+      port.a.bits.param.poke(ArithmeticDataParam.AQGREQ)
+      port.a.bits.address.poke(1.U)
+      port.a.bits.data.poke(0.U)
+      dut.clock.step(2)
+      port.a.valid.poke(false.B)
+      port.d.ready.poke(true.B)
+      port.d.valid.expect(true.B)
+      port.d.bits.data.expect(12.U)
+    }
+  }
+
+  "Simultaneous ADDU and SUBU on the same register: both complete and final value is correct" in {
+    implicit val c = Configuration.default()
+    simulate(new Semaphore()) { dut =>
+      defaultPokes(dut)
+      dut.io.progPort.valid.poke(true.B)
+      dut.io.progPort.bits(0).poke(0.U)
+      dut.io.progPort.bits(1).poke(20.U)  // emptyReg = 20
+      dut.clock.step()
+      dut.io.progPort.valid.poke(false.B)
+
+      //////////////////////////////////////////////////
+
+      // Port 0: ADDU emptyReg by 8; port 1: SUBU emptyReg by 5 — simultaneously
+      dut.io.inPorts(0).a.valid.poke(true.B)
+      dut.io.inPorts(0).a.bits.opcode.poke(TilelinkOpcodes.ArithmeticData)
+      dut.io.inPorts(0).a.bits.param.poke(ArithmeticDataParam.ADDU)
+      dut.io.inPorts(0).a.bits.address.poke(1.U)
+      dut.io.inPorts(0).a.bits.data.poke(8.U)
+      dut.io.inPorts(0).a.bits.source.poke(0.U)
+      dut.io.inPorts(0).a.bits.size.poke(0.U)
+      dut.io.inPorts(0).a.bits.mask.poke(0.U)
+      dut.io.inPorts(0).a.bits.corrupt.poke(0.U)
+
+      dut.io.inPorts(1).a.valid.poke(true.B)
+      dut.io.inPorts(1).a.bits.opcode.poke(TilelinkOpcodes.ArithmeticData)
+      dut.io.inPorts(1).a.bits.param.poke(ArithmeticDataParam.SUBU)
+      dut.io.inPorts(1).a.bits.address.poke(1.U)
+      dut.io.inPorts(1).a.bits.data.poke(5.U)
+      dut.io.inPorts(1).a.bits.source.poke(1.U)
+      dut.io.inPorts(1).a.bits.size.poke(0.U)
+      dut.io.inPorts(1).a.bits.mask.poke(0.U)
+      dut.io.inPorts(1).a.bits.corrupt.poke(0.U)
+
+      dut.clock.step()
+      for (i <- 0 until 2) dut.io.inPorts(i).a.valid.poke(false.B)
+      for (i <- 0 until 2) dut.io.inPorts(i).d.ready.poke(true.B)
+
+      var port0Done = false
+      var port1Done = false
+      var cycles = 0
+      while (!port0Done || !port1Done) {
+        require(cycles < maxCycles, "Timeout waiting for both ports to respond")
+        if (!port0Done && dut.io.inPorts(0).d.valid.peek().litToBoolean) {
+          dut.io.inPorts(0).d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
+          port0Done = true
+        }
+        if (!port1Done && dut.io.inPorts(1).d.valid.peek().litToBoolean) {
+          dut.io.inPorts(1).d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
+          port1Done = true
+        }
+        if (!port0Done || !port1Done) dut.clock.step()
+        cycles += 1
+      }
+      dut.clock.step()
+      for (i <- 0 until 2) dut.io.inPorts(i).d.ready.poke(false.B)
+
+      //////////////////////////////////////////////////
+
+      // Final emptyReg = 20 + 8 - 5 = 23 regardless of grant order
+      dut.io.inPorts(0).a.valid.poke(true.B)
+      dut.io.inPorts(0).a.bits.opcode.poke(TilelinkOpcodes.ArithmeticData)
+      dut.io.inPorts(0).a.bits.param.poke(ArithmeticDataParam.AQGREQ)
+      dut.io.inPorts(0).a.bits.address.poke(1.U)
+      dut.io.inPorts(0).a.bits.data.poke(0.U)
+      dut.io.inPorts(0).a.bits.source.poke(0.U)
+      dut.io.inPorts(0).a.bits.size.poke(0.U)
+      dut.io.inPorts(0).a.bits.mask.poke(0.U)
+      dut.io.inPorts(0).a.bits.corrupt.poke(0.U)
+      dut.clock.step(2)
+      dut.io.inPorts(0).a.valid.poke(false.B)
+      dut.io.inPorts(0).d.ready.poke(true.B)
+      dut.io.inPorts(0).d.valid.expect(true.B)
+      dut.io.inPorts(0).d.bits.data.expect(23.U)
+    }
+  }
+
   "progPort reprogramming should take effect on subsequent requests" in {
     implicit val c = Configuration.default()
     simulate(new Semaphore()) { dut =>

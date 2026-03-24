@@ -19,8 +19,9 @@ object ArithmeticDataParam {
   val MAXU    = 3.U(3.W)
   val ADD     = 4.U(3.W)
   /// Custom extension
-  val SUBU    = 5.U(3.W) // Subtrack unsigned
-  val AQGREQ  = 6.U(3.W) // Aqquire when greater or equal to data
+  val SUBU    = 5.U(3.W) // Subtract unsigned
+  val AQGREQ  = 6.U(3.W) // Acquire when greater or equal to data
+  val ADDU    = 7.U(3.W)   // Add unsigned
 }
 
 class TilelinkA(implicit c: Configuration) extends Bundle {
