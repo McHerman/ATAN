@@ -27,6 +27,129 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
     dut.io.progPort.bits(1).poke(0.U)
   }
 
+  // Producer (port 0): AQGREQ(empty>=1) → SUBU(empty,1) → ADDU(full,1), repeated
+  // Consumer (port 1): AQGREQ(full>=1)  → SUBU(full,1)  → ADDU(empty,1), repeated
+  // regs(0)=full (address=0), regs(1)=empty (address=1)
+  // Both ports are driven concurrently each cycle via a per-port state machine.
+  def producerConsumerRun(dut: Semaphore, bufferSize: Int, transfers: Int): Unit = {
+    defaultPokes(dut)
+    dut.io.progPort.valid.poke(true.B)
+    dut.io.progPort.bits(0).poke(0.U)
+    dut.io.progPort.bits(1).poke(bufferSize.U)
+    dut.clock.step()
+    dut.io.progPort.valid.poke(false.B)
+
+    val prodOps = Seq(
+      (ArithmeticDataParam.AQGREQ, 1, 1),
+      (ArithmeticDataParam.SUBU,   1, 1),
+      (ArithmeticDataParam.ADDU,   0, 1)
+    )
+    val consOps = Seq(
+      (ArithmeticDataParam.AQGREQ, 0, 1),
+      (ArithmeticDataParam.SUBU,   0, 1),
+      (ArithmeticDataParam.ADDU,   1, 1)
+    )
+
+    var prodUnits = 0; var consUnits = 0
+    var prodPhase = 0; var consPhase = 0
+    var prodSent  = false; var consSent = false
+
+    var cycles = 0
+    while (consUnits < transfers) {
+      require(cycles < transfers * 200, s"Timeout after $cycles cycles")
+
+      // Reset a.valid each cycle; only assert when sending this cycle
+      dut.io.inPorts(0).a.valid.poke(false.B)
+      dut.io.inPorts(1).a.valid.poke(false.B)
+      dut.io.inPorts(0).d.ready.poke(true.B)
+      dut.io.inPorts(1).d.ready.poke(true.B)
+
+      // Producer
+      if (prodUnits < transfers) {
+        if (!prodSent && dut.io.inPorts(0).a.ready.peek().litToBoolean) {
+          val (param, addr, data) = prodOps(prodPhase)
+          dut.io.inPorts(0).a.valid.poke(true.B)
+          dut.io.inPorts(0).a.bits.opcode.poke(TilelinkOpcodes.ArithmeticData)
+          dut.io.inPorts(0).a.bits.param.poke(param)
+          dut.io.inPorts(0).a.bits.address.poke(addr.U)
+          dut.io.inPorts(0).a.bits.data.poke(data.U)
+          dut.io.inPorts(0).a.bits.source.poke(0.U)
+          dut.io.inPorts(0).a.bits.size.poke(0.U)
+          dut.io.inPorts(0).a.bits.mask.poke(0.U)
+          dut.io.inPorts(0).a.bits.corrupt.poke(0.U)
+          prodSent = true
+        } else if (prodSent && dut.io.inPorts(0).d.valid.peek().litToBoolean) {
+          dut.io.inPorts(0).d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
+          prodSent = false
+          prodPhase = (prodPhase + 1) % 3
+          if (prodPhase == 0) prodUnits += 1
+        }
+      }
+
+      // Consumer
+      if (consUnits < transfers) {
+        if (!consSent && dut.io.inPorts(1).a.ready.peek().litToBoolean) {
+          val (param, addr, data) = consOps(consPhase)
+          dut.io.inPorts(1).a.valid.poke(true.B)
+          dut.io.inPorts(1).a.bits.opcode.poke(TilelinkOpcodes.ArithmeticData)
+          dut.io.inPorts(1).a.bits.param.poke(param)
+          dut.io.inPorts(1).a.bits.address.poke(addr.U)
+          dut.io.inPorts(1).a.bits.data.poke(data.U)
+          dut.io.inPorts(1).a.bits.source.poke(1.U)
+          dut.io.inPorts(1).a.bits.size.poke(0.U)
+          dut.io.inPorts(1).a.bits.mask.poke(0.U)
+          dut.io.inPorts(1).a.bits.corrupt.poke(0.U)
+          consSent = true
+        } else if (consSent && dut.io.inPorts(1).d.valid.peek().litToBoolean) {
+          dut.io.inPorts(1).d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
+          consSent = false
+          consPhase = (consPhase + 1) % 3
+          if (consPhase == 0) consUnits += 1
+        }
+      }
+
+      dut.clock.step()
+      cycles += 1
+    }
+
+    // Let any in-flight d.fire complete so both ports return to idle
+    dut.io.inPorts(0).d.ready.poke(true.B)
+    dut.io.inPorts(1).d.ready.poke(true.B)
+    dut.clock.step()
+    dut.io.inPorts(0).d.ready.poke(false.B)
+    dut.io.inPorts(1).d.ready.poke(false.B)
+
+    // Both registers must be back to initial: full=0, empty=bufferSize
+    for ((regAddr, expected) <- Seq((0, 0), (1, bufferSize))) {
+      dut.io.inPorts(0).a.valid.poke(true.B)
+      dut.io.inPorts(0).a.bits.opcode.poke(TilelinkOpcodes.ArithmeticData)
+      dut.io.inPorts(0).a.bits.param.poke(ArithmeticDataParam.AQGREQ)
+      dut.io.inPorts(0).a.bits.address.poke(regAddr.U)
+      dut.io.inPorts(0).a.bits.data.poke(0.U)
+      dut.io.inPorts(0).a.bits.source.poke(0.U)
+      dut.io.inPorts(0).a.bits.size.poke(0.U)
+      dut.io.inPorts(0).a.bits.mask.poke(0.U)
+      dut.io.inPorts(0).a.bits.corrupt.poke(0.U)
+      dut.clock.step(2)
+      dut.io.inPorts(0).a.valid.poke(false.B)
+      dut.io.inPorts(0).d.ready.poke(true.B)
+      dut.io.inPorts(0).d.valid.expect(true.B)
+      dut.io.inPorts(0).d.bits.data.expect(expected.U)
+      dut.clock.step()
+      dut.io.inPorts(0).d.ready.poke(false.B)
+    }
+  }
+
+  "Producer/consumer: bounded buffer of 4, 16 transfers of 1 unit each" in {
+    implicit val c = Configuration.default()
+    simulate(new Semaphore()) { dut => producerConsumerRun(dut, bufferSize = 4,  transfers = 16) }
+  }
+
+  "Producer/consumer: unbounded buffer of 16, 16 transfers of 1 unit each" in {
+    implicit val c = Configuration.default()
+    simulate(new Semaphore()) { dut => producerConsumerRun(dut, bufferSize = 16, transfers = 16) }
+  }
+
   "AQGREQ on even address should return fullReg" in {
     implicit val c = Configuration.default()
     simulate(new Semaphore()) { dut =>
@@ -746,6 +869,115 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       dut.io.inPorts(1).d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
       dut.io.inPorts(1).d.bits.data.expect(77.U)
+    }
+  }
+
+  "AQGREQ should stall until acquire is valid" in {
+    implicit val c = Configuration.default()
+    simulate(new Semaphore()) { dut =>
+      defaultPokes(dut)
+
+      dut.io.progPort.valid.poke(true.B)
+      dut.io.progPort.bits(0).poke(0.U) // fullReg
+      dut.io.progPort.bits(1).poke(5.U)  // emptyReg
+      dut.clock.step()
+      dut.io.progPort.valid.poke(false.B)
+
+
+      ////////////////////////////////////////////////// 
+
+
+      dut.io.inPorts(1).a.ready.expect(true.B)
+      dut.io.inPorts(1).a.valid.poke(true.B)
+
+      dut.io.inPorts(1).a.bits.opcode.poke(TilelinkOpcodes.ArithmeticData)
+      dut.io.inPorts(1).a.bits.param.poke(ArithmeticDataParam.AQGREQ)
+      dut.io.inPorts(1).a.bits.address.poke(0.U)
+      dut.io.inPorts(1).a.bits.data.poke(1.U) // acquire when greater or equal to 1 
+      dut.io.inPorts(1).a.bits.source.poke(0.U)
+      dut.io.inPorts(1).a.bits.size.poke(0.U)
+      dut.io.inPorts(1).a.bits.mask.poke(0.U)
+      dut.io.inPorts(1).a.bits.corrupt.poke(0.U)
+
+      dut.clock.step(2)
+
+      dut.io.inPorts(1).a.valid.poke(false.B)
+
+      dut.io.inPorts(1).d.valid.expect(false.B) // Should stall 
+      /*
+      dut.io.inPorts(1).d.ready.poke(true.B)
+
+      dut.io.inPorts(1).d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
+      dut.io.inPorts(1).d.bits.data.expect(10.U)
+      */
+
+      dut.clock.step()
+
+
+      ////////////////////////////////////////////////// 
+
+      dut.io.inPorts(0).a.ready.expect(true.B)
+      dut.io.inPorts(0).a.valid.poke(true.B)
+
+      dut.io.inPorts(0).a.bits.opcode.poke(TilelinkOpcodes.ArithmeticData)
+      dut.io.inPorts(0).a.bits.param.poke(ArithmeticDataParam.ADDU)
+      dut.io.inPorts(0).a.bits.address.poke(0.U)
+      dut.io.inPorts(0).a.bits.data.poke(1.U) // Atomic add 1
+      dut.io.inPorts(0).a.bits.source.poke(0.U)
+      dut.io.inPorts(0).a.bits.size.poke(0.U)
+      dut.io.inPorts(0).a.bits.mask.poke(0.U)
+      dut.io.inPorts(0).a.bits.corrupt.poke(0.U)
+
+      dut.clock.step(2)
+
+      dut.io.inPorts(0).a.valid.poke(false.B)
+
+      dut.io.inPorts(0).d.valid.expect(true.B)
+      dut.io.inPorts(0).d.ready.poke(true.B)
+
+      dut.io.inPorts(0).d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
+      dut.io.inPorts(0).d.bits.data.expect(1.U)
+
+      ////////////////////////////////////////////////// 
+
+      // Acquire
+
+      dut.clock.step()
+
+      dut.io.inPorts(1).d.valid.expect(true.B)
+      dut.io.inPorts(1).d.ready.poke(true.B)
+
+      dut.io.inPorts(1).d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
+      dut.io.inPorts(1).d.bits.data.expect(1.U)
+
+      dut.clock.step()
+
+      ////////////////////////////////////////////////// 
+
+      // SUB 1
+
+      dut.io.inPorts(1).a.ready.expect(true.B)
+      dut.io.inPorts(1).a.valid.poke(true.B)
+
+      dut.io.inPorts(1).a.bits.opcode.poke(TilelinkOpcodes.ArithmeticData)
+      dut.io.inPorts(1).a.bits.param.poke(ArithmeticDataParam.SUBU)
+      dut.io.inPorts(1).a.bits.address.poke(0.U)
+      dut.io.inPorts(1).a.bits.data.poke(1.U)
+      dut.io.inPorts(1).a.bits.source.poke(0.U)
+      dut.io.inPorts(1).a.bits.size.poke(0.U)
+      dut.io.inPorts(1).a.bits.mask.poke(0.U)
+      dut.io.inPorts(1).a.bits.corrupt.poke(0.U)
+
+      dut.clock.step(2)
+
+      dut.io.inPorts(1).a.valid.poke(false.B)
+
+      dut.io.inPorts(1).d.valid.expect(true.B)
+      dut.io.inPorts(1).d.ready.poke(true.B)
+
+      dut.io.inPorts(1).d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
+      dut.io.inPorts(1).d.bits.data.expect(0.U)
+      
     }
   }
 }
