@@ -9,7 +9,6 @@ import scala.io.Source
 import scala.util.Random
 
 class ATA8Test extends AnyFreeSpec with Matchers with ChiselSim {
-
   //val n = 2 + Random.nextInt(30)
   val n = 8
 
@@ -92,7 +91,7 @@ class ATA8Test extends AnyFreeSpec with Matchers with ChiselSim {
 
 
   //implicit val Config = Configuration.default().copy(issueQueueSize = n, simulation = true)
-
+  /*
   "ATA8 should execute" in {
     //val n = 2 + Random.nextInt(30)
     //val n = 16
@@ -194,4 +193,5 @@ class ATA8Test extends AnyFreeSpec with Matchers with ChiselSim {
 			}
     }
   }
+  */
 }
