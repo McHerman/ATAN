@@ -1,3 +1,4 @@
+/*
 package ATA8
 
 import chisel3._
@@ -7,13 +8,9 @@ import org.scalatest.matchers.must.Matchers
 
 import scala.util.Random
 
-//import org.scalatest.concurrent.Eventually._
-//import org.scalatest.time.{Millis, Span}
-
 
 class ROBTest extends AnyFreeSpec with Matchers with ChiselSim {
 
-  //val n = 2 + Random.nextInt(30)
   val n = 8
 
   val matrix3: Array[Array[Int]] = Array(
@@ -34,8 +31,6 @@ class ROBTest extends AnyFreeSpec with Matchers with ChiselSim {
           (0 until n).map(k => A(i)(k) * B(k)(j)).sum
       }
   }
-
-  //implicit val Config = Configuration.default().copy(issueQueueSize = n, simulation = true)
 
   "ROB should allocate n, fetch, and deallocate" in {
     simulate(new ROB(8,1,0)(Configuration.default())) { dut =>
@@ -80,8 +75,6 @@ class ROBTest extends AnyFreeSpec with Matchers with ChiselSim {
         dut.io.ReadData(0).request.bits.addr.poke(i.U)
 
         dut.io.ReadData(0).response.valid.expect(false.B)
-        //dut.io.ReadData(0).response.bits.tag.expect(i.U)
-        //dut.io.ReadData(0).response.bits.ready.expect(false.B)
 
         dut.clock.step(1)
       }
@@ -98,13 +91,7 @@ class ROBTest extends AnyFreeSpec with Matchers with ChiselSim {
 
         dut.clock.step(1)
       }
-
-
-
-
-
-
-
     }
   }
 }
+*/

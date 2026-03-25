@@ -34,7 +34,6 @@ class SysWriteDMA(implicit c: Configuration) extends Module {
 
   io.in.response.valid := StateReg =/= 0.U
   io.in.response.bits.completed := false.B
-  io.in.response.bits.tag := 0.U
 
   switch(StateReg) {
     is(0.U) {
@@ -108,7 +107,6 @@ class SysWriteDMA(implicit c: Configuration) extends Module {
 
       when(reg.burstSize === 0.U || io.scratchOut.d.valid) {
         io.in.response.bits.completed := true.B
-        io.in.response.bits.tag := reg.tag
 
         when(io.in.response.ready) {
           StateReg := 0.U

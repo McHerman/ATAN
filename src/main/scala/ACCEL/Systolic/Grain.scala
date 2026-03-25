@@ -10,7 +10,7 @@ class Grain(implicit c: Configuration) extends Module {
     val writePort = Vec(2,Vec(c.grainDim,Flipped(Decoupled(Vec(c.dataBusSize,UInt(8.W))))))
 
     val readPort = Vec(c.grainDim,Flipped(new Readport(Vec(c.dataBusSize,UInt(c.arithDataWidth.W)),0)))
-    val completed = Valid(new Bundle{val tag = UInt(c.tagWidth.W)})
+    val completed = Output(Bool())
   })
 
   val xFiles = Seq.fill(c.grainDim)(Module(new XFile())) 

@@ -18,7 +18,7 @@ class SysCtrl(implicit c: Configuration) extends Module {
     val sizes = Output(Vec(c.grainDim, UInt(log2Ceil(c.dataBusSize + 1).W)))
     val activateLoopBack = Input(Bool())
 
-    val completed = Valid(new Bundle{val tag = UInt(c.tagWidth.W)})
+    val completed = Output(Bool())
   })
 
   io.in.ready := false.B
@@ -28,8 +28,7 @@ class SysCtrl(implicit c: Configuration) extends Module {
   io.Enable := false.B
   io.Mode := 0.U */
 
-  io.completed.valid := false.B
-  io.completed.bits := DontCare
+  io.completed := false.B
 
   val ShiftCnt = RegInit(0.U(8.W))
   val ActivateCnt = RegInit(0.U(8.W))
@@ -111,8 +110,7 @@ class SysCtrl(implicit c: Configuration) extends Module {
         ActivateCnt := 0.U
         StateReg := 0.U
 
-        io.completed.bits.tag := inReg.tag
-        io.completed.valid := true.B
+        io.completed := true.B
       }
     }
 
@@ -158,8 +156,7 @@ class SysCtrl(implicit c: Configuration) extends Module {
         ShiftCnt := 0.U
         StateReg := 0.U
 
-        io.completed.bits.tag := inReg.tag
-        io.completed.valid := true.B
+        io.completed := true.B
       }
     }
   }

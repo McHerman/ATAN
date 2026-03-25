@@ -8,66 +8,54 @@ class ATA8(config: Configuration) extends Module {
   implicit val c = config
 
   val io = IO(new Bundle {
-    val AXIST_out = new AXIST_2(64,2,1,1,1) 
-    val AXIST_inData = Flipped(new AXIST_2(64,2,1,1,1))
-    val AXIST_inInst = Flipped(new AXIST_2(64,2,1,1,1))
-    val axi_s0 = Flipped(new CustomAXI4Lite(32, 32))
+    val AXIST_out     = new AXIST_2(64, 2, 1, 1, 1)
+    val AXIST_inData  = Flipped(new AXIST_2(64, 2, 1, 1, 1))
+    val AXIST_inInst  = Flipped(new AXIST_2(64, 2, 1, 1, 1))
+    val axi_s0        = Flipped(new CustomAXI4Lite(32, 32))
   })
 
-  val FrontEnd = Module(new FrontEnd)
-
-  val Execute = Module(new Execute())
-  val Load = Module(new Load())
-  val Store = Module(new Store())
-
+  val FrontEnd  = Module(new FrontEnd)
+  val Execute   = Module(new Execute())
+  val Load      = Module(new Load())
+  val Store     = Module(new Store())
   val Scratchpad = Module(new ScratchpadWrapper)
-
-  val Config = Module(new Config())
+  val Config    = Module(new Config())
 
   //// FRONTEND ////
 
   FrontEnd.io.AXIST <> io.AXIST_inInst
   Execute.io.instructionStream <> FrontEnd.io.exeStream
-  Load.io.instructionStream <> FrontEnd.io.loadStream
-  Store.io.instructionStream <> FrontEnd.io.storeStream
-  
-  FrontEnd.io.event(0) := Load.io.event
-  FrontEnd.io.event(1) := Execute.io.eventOut
+  Load.io.instructionStream    <> FrontEnd.io.loadStream
+  Store.io.instructionStream   <> FrontEnd.io.storeStream
 
   //// EXECUTE ////
 
   Execute.io.scratchIn(0) <> Scratchpad.io.ReadPorts(0)
   Execute.io.scratchIn(1) <> Scratchpad.io.ReadPorts(1)
-  Execute.io.eventIn <> Load.io.event
 
-  //// LOAD //// 
+  //// LOAD ////
 
   Load.io.AXIST <> io.AXIST_inData
 
-  //// STORE //// 
+  //// STORE ////
 
-  Store.io.AXIST <> io.AXIST_out
+  Store.io.AXIST   <> io.AXIST_out
   Store.io.readPort <> Scratchpad.io.ReadPorts(2)
-  Store.io.event(0) := Load.io.event
-  Store.io.event(1) := Execute.io.eventOut
 
-  //// SCRATCHPAD //// 
+  //// SCRATCHPAD ////
 
   Scratchpad.io.WritePorts <> VecInit(Execute.io.scratchOut ++ VecInit(Seq(Load.io.scratchOut)))
 
-  /// DEBUG /// 
+  /// DEBUG ///
 
-  Config.io.axi_s0 <> io.axi_s0
-  Config.io.loadDebug <> Load.io.debug
-  Config.io.storeDebug <> Store.io.debug
-  Config.io.exeDebug <> Execute.io.debug
+  Config.io.axi_s0        <> io.axi_s0
+  Config.io.loadDebug     <> Load.io.debug
+  Config.io.storeDebug    <> Store.io.debug
+  Config.io.exeDebug      <> Execute.io.debug
   Config.io.receiverDebug <> FrontEnd.io.receiverDebug
-  Config.io.decodeDebug <> FrontEnd.io.decodeDebug
-  Config.io.event(0) := Load.io.event
-  Config.io.event(1) := Execute.io.eventOut
-  Config.io.robDebug := FrontEnd.io.robDebug
+  Config.io.decodeDebug   <> FrontEnd.io.decodeDebug
 
-  Config.io.decodeOutLoad.bits := FrontEnd.io.loadStream.bits
+  Config.io.decodeOutLoad.bits  := FrontEnd.io.loadStream.bits
   Config.io.decodeOutLoad.valid := FrontEnd.io.loadStream.fire
 
   Config.io.AXIDebug.data_ready := Load.io.AXIST.tready
