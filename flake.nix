@@ -13,13 +13,17 @@
         pkgs = import nixpkgs { inherit system; };
         openxc7Pkgs = openxc7.packages.${system};
 
+        surferWrapped = pkgs.writeShellScriptBin "surfer" ''
+          WAYLAND_DISPLAY= DISPLAY=:0 exec ${pkgs.surfer}/bin/surfer "$@"
+        '';
+
         packages = with pkgs; [
           mill
           verilator
           circt
           python3
           just
-          surfer 
+          surferWrapped
           gtkwave
         ];
 
