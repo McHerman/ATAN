@@ -3,7 +3,7 @@ package ATA8
 import chisel3._
 import chisel3.util._
 
-class TilelinkWriteHandler(implicit c: Configuration) extends Module {
+class TilelinkWriteHandler(implicit c: MemBusConfig) extends Module {
   val io = IO(new Bundle {
     val tl = Flipped(new TilelinkPort)
     val mem = Decoupled(new Writeport(new Bundle { val writeData = Vec(c.dataBusSize, UInt(8.W)); val strb = Vec(c.dataBusSize, Bool()) }, 16))

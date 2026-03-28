@@ -10,7 +10,7 @@ class ScratchpadWrapper(implicit c: Configuration) extends Module {
   })
 
   val WriteArbiter = Module(new ScratchWriteArbiter(1 + c.grainDim))
-  val Scratchpad = Module(new Scratchpad(1))
+  val Scratchpad = Module(new Scratchpad(1, c.bufferReadPorts))
 
   val ReadBurstHandlerVec = Seq.fill(c.bufferReadPorts)(Module(new TilelinkReadHandler))
   val WriteBurstHandlerVec = Seq.fill(1)(Module(new TilelinkWriteHandler))

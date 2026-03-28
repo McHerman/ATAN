@@ -3,7 +3,7 @@ package ATA8
 import chisel3._
 import chisel3.util._
 
-class TilelinkProtocolChecker(endpointType: String = "Host", name: String = "", timeout: Int = 1000)(implicit c: Configuration) extends Module {
+class TilelinkProtocolChecker(endpointType: String = "Host", name: String = "", timeout: Int = 1000)(implicit c: MemBusConfig) extends Module {
   require(endpointType == "Host" || endpointType == "Device",
     s"endpointType must be 'Host' or 'Device', got '$endpointType'")
 
@@ -167,7 +167,7 @@ class TilelinkProtocolChecker(endpointType: String = "Host", name: String = "", 
 }
 
 object TilelinkProtocolChecker {
-  def apply(tl: TilelinkPort, endpointType: String, name: String = "")(implicit c: Configuration): Unit = {
+  def apply(tl: TilelinkPort, endpointType: String, name: String = "")(implicit c: MemBusConfig): Unit = {
     val checker = Module(new TilelinkProtocolChecker(endpointType, name))
     checker.io.a_valid := tl.a.valid
     checker.io.a_ready := tl.a.ready

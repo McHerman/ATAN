@@ -14,12 +14,13 @@ class ATA8(config: Configuration) extends Module {
     val axi_s0        = Flipped(new CustomAXI4Lite(32, 32))
   })
 
-  val FrontEnd  = Module(new FrontEnd)
-  val Execute   = Module(new Execute())
-  val Load      = Module(new Load())
-  val Store     = Module(new Store())
-  val Scratchpad = Module(new ScratchpadWrapper)
-  val Config    = Module(new Config())
+  val FrontEnd     = Module(new FrontEnd)
+  val Execute      = Module(new Execute())
+  val Load         = Module(new Load())
+  val Store        = Module(new Store())
+  val Scratchpad   = Module(new ScratchpadWrapper)
+  val Config       = Module(new Config())
+  val SemBank      = Module(new SemaphoreBank(2))
 
   //// FRONTEND ////
 
@@ -32,10 +33,12 @@ class ATA8(config: Configuration) extends Module {
 
   Execute.io.scratchIn(0) <> Scratchpad.io.ReadPorts(0)
   Execute.io.scratchIn(1) <> Scratchpad.io.ReadPorts(1)
+  Execute.io.semaphoreIF  <> SemBank.io.inPorts(0)
 
   //// LOAD ////
 
-  Load.io.AXIST <> io.AXIST_inData
+  Load.io.AXIST        <> io.AXIST_inData
+  Load.io.semaphoreIF  <> SemBank.io.inPorts(1)
 
   //// STORE ////
 
@@ -45,6 +48,11 @@ class ATA8(config: Configuration) extends Module {
   //// SCRATCHPAD ////
 
   Scratchpad.io.WritePorts <> VecInit(Execute.io.scratchOut ++ VecInit(Seq(Load.io.scratchOut)))
+
+  //// SEMAPHORE BANK ////
+
+  SemBank.io.progPort.valid := false.B
+  SemBank.io.progPort.bits  := DontCare
 
   /// DEBUG ///
 

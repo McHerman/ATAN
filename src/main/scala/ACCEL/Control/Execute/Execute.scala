@@ -11,6 +11,8 @@ class Execute(implicit c: Configuration) extends Module {
     val scratchOut = Vec(c.grainDim, new TilelinkPort)
     val scratchIn  = Vec(2, new TilelinkPort)
 
+    val semaphoreIF = Flipped(new TilelinkPort)
+
     val debug = new ExeDebug
   })
 

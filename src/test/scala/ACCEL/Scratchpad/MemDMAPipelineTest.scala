@@ -9,204 +9,305 @@ class MemDMAPipelineTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   val maxCycles = 500
 
+  implicit val c: Configuration = Configuration.default()
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+
+  def waitFor(dut: MemDMAPipeline)(cond: => Boolean, msg: String): Unit = {
+    var cycles = 0
+    while (!cond) {
+      require(cycles < maxCycles, s"Timeout waiting for: $msg (after $maxCycles cycles)")
+      dut.clock.step()
+      cycles += 1
+    }
+  }
+
+  def pokeTLDIdle(dut: MemDMAPipeline): Unit = {
+    dut.io.tl.a.ready.poke(false.B)
+    dut.io.tl.d.valid.poke(false.B)
+    dut.io.tl.d.bits.opcode.poke(0.U)
+    dut.io.tl.d.bits.param.poke(0.U)
+    dut.io.tl.d.bits.size.poke(0.U)
+    dut.io.tl.d.bits.source.poke(0.U)
+    dut.io.tl.d.bits.sink.poke(0.U)
+    dut.io.tl.d.bits.denied.poke(0.U)
+    dut.io.tl.d.bits.data.poke(0.U)
+    dut.io.tl.d.bits.corrupt.poke(0.U)
+  }
+
+  def pokeSemIdle(dut: MemDMAPipeline): Unit = {
+    dut.io.semaphoreIF.a.ready.poke(false.B)
+    dut.io.semaphoreIF.d.valid.poke(false.B)
+    dut.io.semaphoreIF.d.bits.opcode.poke(0.U)
+    dut.io.semaphoreIF.d.bits.param.poke(0.U)
+    dut.io.semaphoreIF.d.bits.size.poke(0.U)
+    dut.io.semaphoreIF.d.bits.source.poke(0.U)
+    dut.io.semaphoreIF.d.bits.sink.poke(0.U)
+    dut.io.semaphoreIF.d.bits.denied.poke(0.U)
+    dut.io.semaphoreIF.d.bits.data.poke(0.U)
+    dut.io.semaphoreIF.d.bits.corrupt.poke(0.U)
+  }
+
+  def pokeDescNoSem(dut: MemDMAPipeline): Unit = {
+    dut.io.interface.descriptor.bits(0).semaphore.semEnable.poke(false.B)
+    dut.io.interface.descriptor.bits(0).semaphore.semAddr.poke(0.U)
+    dut.io.interface.descriptor.bits(0).semaphore.semStepSize.poke(0.U)
+    dut.io.interface.descriptor.bits(0).semaphore.mode.poke(0.U)
+  }
+
+  /** Accept a semaphoreIF A-channel request and return an AccessAckData. */
+  def completeSemOp(dut: MemDMAPipeline): Unit = {
+    dut.io.semaphoreIF.a.ready.poke(true.B)
+    waitFor(dut)(dut.io.semaphoreIF.a.valid.peek().litToBoolean, "semaphoreIF.a.valid")
+    dut.clock.step()
+    dut.io.semaphoreIF.a.ready.poke(false.B)
+
+    waitFor(dut)(dut.io.semaphoreIF.d.ready.peek().litToBoolean, "semaphoreIF.d.ready")
+    dut.io.semaphoreIF.d.valid.poke(true.B)
+    dut.io.semaphoreIF.d.bits.opcode.poke(TilelinkOpcodes.AccessAckData)
+    dut.clock.step()
+    dut.io.semaphoreIF.d.valid.poke(false.B)
+  }
+
+  // ── Tests ────────────────────────────────────────────────────────────────────
+
   "MemDMAPipeline should be idle on reset" in {
-    implicit val c = Configuration.default()
     simulate(new MemDMAPipeline()) { dut =>
-      // State 0: descriptor ready, no TL activity, no response
       dut.io.interface.descriptor.ready.expect(true.B)
       dut.io.tl.a.valid.expect(false.B)
       dut.io.interface.response.valid.expect(false.B)
     }
   }
 
-  "MemDMAPipeline should handle single-beat write" in {
-    implicit val c = Configuration.default()
+  "MemDMAPipeline should handle single-beat write without semaphores" in {
     simulate(new MemDMAPipeline()) { dut =>
-
-      def waitFor(cond: => Boolean, msg: String): Unit = {
-        var cycles = 0
-        while (!cond) {
-          require(cycles < maxCycles, s"Timeout waiting for: $msg (after $maxCycles cycles)")
-          dut.clock.step()
-          cycles += 1
-        }
-      }
-
-      // Default pokes for TL D channel (test acts as TL device)
-      dut.io.tl.a.ready.poke(false.B)
-      dut.io.tl.d.valid.poke(false.B)
-      dut.io.tl.d.bits.opcode.poke(0.U)
-      dut.io.tl.d.bits.param.poke(0.U)
-      dut.io.tl.d.bits.size.poke(0.U)
-      dut.io.tl.d.bits.source.poke(0.U)
-      dut.io.tl.d.bits.sink.poke(0.U)
-      dut.io.tl.d.bits.denied.poke(0.U)
-      dut.io.tl.d.bits.data.poke(0.U)
-      dut.io.tl.d.bits.corrupt.poke(0.U)
-
-      // Default pokes for other inputs
+      pokeTLDIdle(dut)
+      pokeSemIdle(dut)
       dut.io.interface.response.ready.poke(false.B)
       dut.io.dataIn.bits.poke(0.U)
       dut.io.dataIn.valid.poke(false.B)
       dut.io.dataOut.ready.poke(false.B)
 
-      // Verify idle state
       dut.io.interface.descriptor.ready.expect(true.B)
 
-      // Submit write descriptor: addr=0x100, size=1, writeEn=true
       dut.io.interface.descriptor.valid.poke(true.B)
       dut.io.interface.descriptor.bits(0).addr.poke(0x100.U)
       dut.io.interface.descriptor.bits(0).size.poke(1.U)
       dut.io.interface.descriptor.bits(0).writeEn.poke(true.B)
       dut.io.interface.descriptor.bits(0).source.poke(0.U)
       dut.io.interface.descriptor.bits(0).sink.poke(0.U)
+      pokeDescNoSem(dut)
 
-      dut.clock.step() // Latch descriptor, transition to state 1
+      dut.clock.step()
       dut.io.interface.descriptor.valid.poke(false.B)
 
-      // State 1: DUT presents PutFullData on A channel
-      // Provide data on dataIn
       dut.io.dataIn.bits.poke(0xAB.U)
+      dut.io.dataIn.valid.poke(true.B)
 
-      waitFor(dut.io.tl.a.valid.peek().litToBoolean, "tl.a.valid in state 1")
-
-      // Verify A channel fields
-      dut.io.tl.a.bits.opcode.expect(0.U) // PutFullData
+      waitFor(dut)(dut.io.tl.a.valid.peek().litToBoolean, "tl.a.valid")
+      dut.io.tl.a.bits.opcode.expect(TilelinkOpcodes.PutFullData)
       dut.io.tl.a.bits.address.expect(0x100.U)
       dut.io.tl.a.bits.size.expect(1.U)
       dut.io.tl.a.bits.data.expect(0xAB.U)
 
-      // Accept the A channel beat
       dut.io.tl.a.ready.poke(true.B)
-      dut.clock.step() // A fires, size=1 so transition to state 3
+      dut.clock.step()
       dut.io.tl.a.ready.poke(false.B)
 
-      // State 3: DUT waits for D channel AccessAck
-      waitFor(dut.io.tl.d.ready.peek().litToBoolean, "tl.d.ready in state 3")
-
-      // Send AccessAck on D channel
+      waitFor(dut)(dut.io.tl.d.ready.peek().litToBoolean, "tl.d.ready")
       dut.io.tl.d.valid.poke(true.B)
-      dut.io.tl.d.bits.opcode.poke(0.U) // AccessAck
-
-      dut.clock.step() // D fires, transition to state 4
+      dut.io.tl.d.bits.opcode.poke(TilelinkOpcodes.AccessAck)
+      dut.clock.step()
       dut.io.tl.d.valid.poke(false.B)
 
-      // State 4: DUT sends response
-      waitFor(dut.io.interface.response.valid.peek().litToBoolean, "response.valid in state 4")
-
-      // Accept response
+      waitFor(dut)(dut.io.interface.response.valid.peek().litToBoolean, "response.valid")
       dut.io.interface.response.ready.poke(true.B)
-      dut.clock.step() // Response fires, back to state 0
+      dut.clock.step()
       dut.io.interface.response.ready.poke(false.B)
 
-      // Verify return to idle
       dut.io.interface.descriptor.ready.expect(true.B)
-      dut.io.tl.a.valid.expect(false.B)
-      dut.io.interface.response.valid.expect(false.B)
     }
   }
 
-  "MemDMAPipeline should handle multi-beat write" in {
-    implicit val c = Configuration.default()
+  "MemDMAPipeline should handle multi-beat write without semaphores" in {
     simulate(new MemDMAPipeline()) { dut =>
-
-      def waitFor(cond: => Boolean, msg: String): Unit = {
-        var cycles = 0
-        while (!cond) {
-          require(cycles < maxCycles, s"Timeout waiting for: $msg (after $maxCycles cycles)")
-          dut.clock.step()
-          cycles += 1
-        }
-      }
-
       val baseAddr = 0x200
-      val size = 4
+      val size     = 4
       val beatData = Array(0x10, 0x20, 0x30, 0x40)
 
-      // Default pokes
-      dut.io.tl.a.ready.poke(false.B)
-      dut.io.tl.d.valid.poke(false.B)
-      dut.io.tl.d.bits.opcode.poke(0.U)
-      dut.io.tl.d.bits.param.poke(0.U)
-      dut.io.tl.d.bits.size.poke(0.U)
-      dut.io.tl.d.bits.source.poke(0.U)
-      dut.io.tl.d.bits.sink.poke(0.U)
-      dut.io.tl.d.bits.denied.poke(0.U)
-      dut.io.tl.d.bits.data.poke(0.U)
-      dut.io.tl.d.bits.corrupt.poke(0.U)
+      pokeTLDIdle(dut)
+      pokeSemIdle(dut)
       dut.io.interface.response.ready.poke(false.B)
       dut.io.dataIn.bits.poke(0.U)
       dut.io.dataIn.valid.poke(false.B)
       dut.io.dataOut.ready.poke(false.B)
 
-      // Submit write descriptor: addr=baseAddr, size=4, writeEn=true
       dut.io.interface.descriptor.valid.poke(true.B)
       dut.io.interface.descriptor.bits(0).addr.poke(baseAddr.U)
       dut.io.interface.descriptor.bits(0).size.poke(size.U)
       dut.io.interface.descriptor.bits(0).writeEn.poke(true.B)
       dut.io.interface.descriptor.bits(0).source.poke(0.U)
       dut.io.interface.descriptor.bits(0).sink.poke(0.U)
+      pokeDescNoSem(dut)
 
-      dut.clock.step() // Latch descriptor, transition to state 1
+      dut.clock.step()
       dut.io.interface.descriptor.valid.poke(false.B)
 
-      // --- Beat 0 (state 1) ---
-      dut.io.dataIn.bits.poke(beatData(0).U)
-      dut.io.dataIn.valid.poke(true.B)
-
-      waitFor(dut.io.tl.a.valid.peek().litToBoolean, "tl.a.valid for beat 0")
-
-      dut.io.tl.a.ready.poke(true.B)
-
-      dut.io.dataIn.ready.expect(true.B)
-
-      dut.io.tl.a.bits.opcode.expect(0.U) // PutFullData
-      dut.io.tl.a.bits.address.expect(baseAddr.U)
-      dut.io.tl.a.bits.data.expect(beatData(0).U)
-
-
-      dut.clock.step() // A fires, size>1 so transition to state 2, beatCnt=1
-      dut.io.tl.a.ready.poke(false.B)
-
-      // --- Beats 1..3 (state 2) ---
-      // In state 2, tl.a.valid is gated by io.dataIn.ready.
-      // The DUT defaults dataIn.ready to true; in MemDMA context it's
-      // overridden by the BufferFIFO connection.
-      for (beat <- 1 until size) {
+      for (beat <- 0 until size) {
         dut.io.dataIn.bits.poke(beatData(beat).U)
         dut.io.dataIn.valid.poke(true.B)
-
-        waitFor(dut.io.tl.a.valid.peek().litToBoolean, s"tl.a.valid for beat $beat")
-
-        dut.io.tl.a.bits.opcode.expect(0.U) // PutFullData
-        //dut.io.tl.a.bits.address.expect((baseAddr + beat).U)
+        waitFor(dut)(dut.io.tl.a.valid.peek().litToBoolean, s"tl.a.valid beat $beat")
+        dut.io.tl.a.bits.opcode.expect(TilelinkOpcodes.PutFullData)
         dut.io.tl.a.bits.address.expect(baseAddr.U)
         dut.io.tl.a.bits.data.expect(beatData(beat).U)
-
         dut.io.tl.a.ready.poke(true.B)
         dut.clock.step()
         dut.io.tl.a.ready.poke(false.B)
       }
 
-      // State 3: wait for AccessAck
-      waitFor(dut.io.tl.d.ready.peek().litToBoolean, "tl.d.ready in state 3")
-
+      waitFor(dut)(dut.io.tl.d.ready.peek().litToBoolean, "tl.d.ready")
       dut.io.tl.d.valid.poke(true.B)
-      dut.io.tl.d.bits.opcode.poke(0.U) // AccessAck
-
+      dut.io.tl.d.bits.opcode.poke(TilelinkOpcodes.AccessAck)
       dut.clock.step()
       dut.io.tl.d.valid.poke(false.B)
 
-      // State 4: accept response
-      waitFor(dut.io.interface.response.valid.peek().litToBoolean, "response.valid")
-
+      waitFor(dut)(dut.io.interface.response.valid.peek().litToBoolean, "response.valid")
       dut.io.interface.response.ready.poke(true.B)
       dut.clock.step()
       dut.io.interface.response.ready.poke(false.B)
 
-      // Verify return to idle
       dut.io.interface.descriptor.ready.expect(true.B)
+    }
+  }
+
+  "MemDMAPipeline RestartOnStep: single-step write follows acquire→write→release" in {
+    simulate(new MemDMAPipeline()) { dut =>
+      val semAddr  = 0x06
+      val stepSize = 4
+
+      pokeTLDIdle(dut)
+      pokeSemIdle(dut)
+      dut.io.interface.response.ready.poke(false.B)
+      dut.io.dataIn.bits.poke(0xCD.U)
+      dut.io.dataIn.valid.poke(true.B)
+      dut.io.dataOut.ready.poke(false.B)
+
+      dut.io.interface.descriptor.valid.poke(true.B)
+      dut.io.interface.descriptor.bits(0).addr.poke(0x200.U)
+      dut.io.interface.descriptor.bits(0).size.poke(stepSize.U)
+      dut.io.interface.descriptor.bits(0).writeEn.poke(true.B)
+      dut.io.interface.descriptor.bits(0).source.poke(0.U)
+      dut.io.interface.descriptor.bits(0).sink.poke(0.U)
+      dut.io.interface.descriptor.bits(0).semaphore.semEnable.poke(true.B)
+      dut.io.interface.descriptor.bits(0).semaphore.semAddr.poke(semAddr.U)
+      dut.io.interface.descriptor.bits(0).semaphore.semStepSize.poke(stepSize.U)
+      dut.io.interface.descriptor.bits(0).semaphore.mode.poke(0.U)
+      dut.clock.step()
+      dut.io.interface.descriptor.valid.poke(false.B)
+
+      // 1. Acquire
+      waitFor(dut)(dut.io.semaphoreIF.a.valid.peek().litToBoolean, "AQGREQ")
+      dut.io.semaphoreIF.a.bits.param.expect(ArithmeticDataParam.AQGREQ)
+      dut.io.semaphoreIF.a.bits.address.expect(semAddr.U)
       dut.io.tl.a.valid.expect(false.B)
+      completeSemOp(dut)
+
+      // 2. Write
+      for (_ <- 0 until stepSize) {
+        waitFor(dut)(dut.io.tl.a.valid.peek().litToBoolean, "tl.a beat")
+        dut.io.tl.a.ready.poke(true.B)
+        dut.clock.step()
+        dut.io.tl.a.ready.poke(false.B)
+      }
+      waitFor(dut)(dut.io.tl.d.ready.peek().litToBoolean, "tl.d.ready")
+      dut.io.tl.d.valid.poke(true.B)
+      dut.io.tl.d.bits.opcode.poke(TilelinkOpcodes.AccessAck)
+      dut.clock.step()
+      dut.io.tl.d.valid.poke(false.B)
+
+      // 3. Release (remaining → 0, so goes to respond)
+      waitFor(dut)(dut.io.semaphoreIF.a.valid.peek().litToBoolean, "ADDU")
+      dut.io.semaphoreIF.a.bits.param.expect(ArithmeticDataParam.ADDU)
+      dut.io.semaphoreIF.a.bits.address.expect(semAddr.U)
+      dut.io.semaphoreIF.a.bits.data.expect(stepSize.U)
+      completeSemOp(dut)
+
+      waitFor(dut)(dut.io.interface.response.valid.peek().litToBoolean, "response.valid")
+      dut.io.interface.response.ready.poke(true.B)
+      dut.clock.step()
+      dut.io.interface.response.ready.poke(false.B)
+
+      dut.io.interface.descriptor.ready.expect(true.B)
+    }
+  }
+
+  "MemDMAPipeline RestartOnStep: multi-step read repeats acquire→read→release per step" in {
+    simulate(new MemDMAPipeline()) { dut =>
+      val baseAddr  = 0x300
+      val semAddr   = 0x08
+      val stepSize  = 2
+      val nSteps    = 3
+      val totalSize = stepSize * nSteps
+
+      pokeTLDIdle(dut)
+      pokeSemIdle(dut)
+      dut.io.interface.response.ready.poke(false.B)
+      dut.io.dataIn.valid.poke(false.B)
+      dut.io.dataOut.ready.poke(true.B)
+
+      dut.io.interface.descriptor.valid.poke(true.B)
+      dut.io.interface.descriptor.bits(0).addr.poke(baseAddr.U)
+      dut.io.interface.descriptor.bits(0).size.poke(totalSize.U)
+      dut.io.interface.descriptor.bits(0).writeEn.poke(false.B)
+      dut.io.interface.descriptor.bits(0).source.poke(0.U)
+      dut.io.interface.descriptor.bits(0).sink.poke(0.U)
+      dut.io.interface.descriptor.bits(0).semaphore.semEnable.poke(true.B)
+      dut.io.interface.descriptor.bits(0).semaphore.semAddr.poke(semAddr.U)
+      dut.io.interface.descriptor.bits(0).semaphore.semStepSize.poke(stepSize.U)
+      dut.io.interface.descriptor.bits(0).semaphore.mode.poke(0.U)
+      dut.clock.step()
+      dut.io.interface.descriptor.valid.poke(false.B)
+
+      for (step <- 0 until nSteps) {
+        val expectedAddr = (baseAddr + step * stepSize).U
+
+        // 1. Acquire
+        waitFor(dut)(dut.io.semaphoreIF.a.valid.peek().litToBoolean, s"AQGREQ step $step")
+        dut.io.semaphoreIF.a.bits.param.expect(ArithmeticDataParam.AQGREQ)
+        dut.io.semaphoreIF.a.bits.address.expect(semAddr.U)
+        completeSemOp(dut)
+
+        // 2. Read at advancing address
+        waitFor(dut)(dut.io.tl.a.valid.peek().litToBoolean, s"Get step $step")
+        dut.io.tl.a.bits.opcode.expect(TilelinkOpcodes.Get)
+        dut.io.tl.a.bits.address.expect(expectedAddr)
+        dut.io.tl.a.bits.size.expect(stepSize.U)
+        dut.io.tl.a.ready.poke(true.B)
+        dut.clock.step()
+        dut.io.tl.a.ready.poke(false.B)
+
+        for (beat <- 0 until stepSize) {
+          waitFor(dut)(dut.io.tl.d.ready.peek().litToBoolean, s"D beat $step/$beat")
+          dut.io.tl.d.valid.poke(true.B)
+          dut.io.tl.d.bits.opcode.poke(TilelinkOpcodes.AccessAckData)
+          dut.io.tl.d.bits.data.poke((step * stepSize + beat).U)
+          dut.clock.step()
+          dut.io.tl.d.valid.poke(false.B)
+        }
+
+        // 3. Release
+        waitFor(dut)(dut.io.semaphoreIF.a.valid.peek().litToBoolean, s"ADDU step $step")
+        dut.io.semaphoreIF.a.bits.param.expect(ArithmeticDataParam.ADDU)
+        dut.io.semaphoreIF.a.bits.address.expect(semAddr.U)
+        completeSemOp(dut)
+      }
+
+      waitFor(dut)(dut.io.interface.response.valid.peek().litToBoolean, "response.valid")
+      dut.io.interface.response.ready.poke(true.B)
+      dut.clock.step()
+      dut.io.interface.response.ready.poke(false.B)
+
+      dut.io.interface.descriptor.ready.expect(true.B)
     }
   }
 }

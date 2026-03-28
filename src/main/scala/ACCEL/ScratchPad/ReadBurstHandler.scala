@@ -3,7 +3,7 @@ package ATA8
 import chisel3._
 import chisel3.util._
 
-class TilelinkReadHandler(implicit c: Configuration) extends Module {
+class TilelinkReadHandler(implicit c: MemBusConfig) extends Module {
   val io = IO(new Bundle {
     val tl = Flipped(new TilelinkPort)
     val mem = new Readport(Vec(c.dataBusSize, UInt(c.arithDataWidth.W)), 16)

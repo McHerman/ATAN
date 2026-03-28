@@ -3,6 +3,15 @@ import chisel3.util.log2Ceil
 
 package object ATA8 {
 
+  // Minimal bus-level parameters shared between Configuration and MemSystemConfig.
+  // Modules that only need TileLink/data-bus dimensions should take this as their implicit.
+  trait MemBusConfig {
+    def dataBusSize: Int
+    def arithDataWidth: Int
+    def addrWidth: Int
+    def sourceWidth: Int
+  }
+
   case class Configuration(
     scratchpadSize: Int,
     bufferReadPorts: Int,
@@ -18,7 +27,7 @@ package object ATA8 {
     addrWidth: Int,
     dataBusSize: Int,
     sourceWidth: Int
-  ){
+  ) extends MemBusConfig {
     val tagWidth =  log2Ceil(tagCount)
     val grainSizeWidth = log2Ceil(grainDim)
     val accDataBytes = accDataWidth / 8

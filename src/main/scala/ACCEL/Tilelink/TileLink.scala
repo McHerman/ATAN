@@ -24,7 +24,7 @@ object ArithmeticDataParam {
   val ADDU    = 7.U(3.W)   // Add unsigned
 }
 
-class TilelinkA(implicit c: Configuration) extends Bundle {
+class TilelinkA(implicit c: MemBusConfig) extends Bundle {
   val opcode  = UInt(3.W)
   val param   = UInt(3.W)
   val size    = UInt(24.W)
@@ -35,7 +35,7 @@ class TilelinkA(implicit c: Configuration) extends Bundle {
   val corrupt = UInt(1.W)
 }
 
-class TilelinkD(implicit c: Configuration) extends Bundle {
+class TilelinkD(implicit c: MemBusConfig) extends Bundle {
   val opcode  = UInt(3.W)
   val param   = UInt(2.W)
   val size    = UInt(24.W)
@@ -46,7 +46,7 @@ class TilelinkD(implicit c: Configuration) extends Bundle {
   val corrupt = UInt(1.W)
 }
 
-class TilelinkPort(implicit c: Configuration) extends Bundle {
+class TilelinkPort(implicit c: MemBusConfig) extends Bundle {
   val a = Decoupled(new TilelinkA)
   val d = Flipped(Decoupled(new TilelinkD))
 }

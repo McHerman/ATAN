@@ -13,7 +13,7 @@ case class TLXbarConfig(
   nMasters: Int,
   slaves: Seq[TLSlaveConfig],
   arbiterPolicy: String = "roundRobin" // or "lowestIndexFirst"
-)(implicit val c: Configuration)
+)(implicit val c: MemBusConfig)
 
 
 class TLXbar(config: TLXbarConfig) extends Module {

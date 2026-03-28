@@ -3,14 +3,10 @@ package ATA8
 import chisel3._
 import chisel3.util._
 
-class Scratchpad(writeports: Int)(implicit c: Configuration) extends Module {
+class Scratchpad(writeports: Int, readports: Int)(implicit c: MemBusConfig) extends Module {
   val io = IO(new Bundle {
-  	//val Readport = Vec(c.bufferReadPorts, Flipped(new ReadportBuf(c.arithDataWidth,10)))
-  	//val Writeport = Vec(c.bufferWritePorts, Flipped(new WriteportBuf(c.arithDataWidth,10)))
-  	//val Writeport = Vec(writeports, Flipped(Decoupled(new Writeport(Vec(c.grainDim,UInt(c.arithDataWidth.W)),16))))
-    //val Readport = Vec(c.bufferReadPorts, Flipped(new Readport(Vec(c.grainDim,UInt(c.arithDataWidth.W)),16)))
     val Writeport = Vec(writeports, Flipped(Decoupled(new Writeport(new Bundle{val writeData = Vec(c.dataBusSize,UInt(8.W)); val strb = Vec(c.dataBusSize, Bool())},16))))
-    val Readport = Vec(c.bufferReadPorts, Flipped(new Readport(Vec(c.dataBusSize,UInt(8.W)),16)))
+    val Readport = Vec(readports, Flipped(new Readport(Vec(c.dataBusSize,UInt(8.W)),16)))
   })
 
   val numOfBanks = 16
