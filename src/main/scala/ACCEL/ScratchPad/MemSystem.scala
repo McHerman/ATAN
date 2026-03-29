@@ -3,30 +3,6 @@ package ATA8
 import chisel3._
 import chisel3.util._
 
-/**
- * Multi-tier memory system.
- *
- * Topology (example, 3 tiers):
- *
- *   External access
- *        ↕  (tier0.writePorts / tier0.readPorts)
- *   [ Tier 0 – small/fast L1 ]
- *        ↕  portA          portB ↕
- *              [ MemDMA 0 ]
- *        ↕  portB          portA ↕
- *   [ Tier 1 – medium L2 ]
- *        ↕  portA          portB ↕
- *              [ MemDMA 1 ]
- *        ↕  portB          portA ↕
- *   [ Tier 2 – large/slow L3 ]
- *
- * Only Tier 0's external write/read ports are exposed in [[io]].
- * DMA interfaces for software-initiated transfers are exposed as
- * [[io.dmaInterfaces]].
- *
- * Integration with the wider accelerator is deferred; this module is
- * self-contained and configured entirely via [[MemSystemConfig]].
- */
 class MemSystem(implicit mc: MemSystemConfig) extends Module {
 
   private val nTiers = mc.tiers.length
@@ -43,14 +19,11 @@ class MemSystem(implicit mc: MemSystemConfig) extends Module {
     else 2
 
   val io = IO(new Bundle {
-    // External access always goes through the hottest (tier 0) scratchpad
-    val tier0WritePorts = Vec(mc.tiers(0).nWritePorts, Flipped(new TilelinkPort))
-    val tier0ReadPorts  = Vec(mc.tiers(0).nReadPorts,  Flipped(new TilelinkPort))
-    // Software-initiated DMA descriptors (one per inter-tier link)
+    val tier3WritePorts = Vec(mc.tiers(0).nWritePorts, Flipped(new TilelinkPort))
+    val tier3ReadPorts  = Vec(mc.tiers(0).nReadPorts,  Flipped(new TilelinkPort))
+
     val dmaInterfaces = Vec(nDMAs, Flipped(new dmaInterface(2)))
-    // Per-pipeline semaphore ports — connect to a SemaphoreBank externally.
-    // semaphoreA(i) belongs to pipeline A of DMA i (portA side / upper tier).
-    // semaphoreB(i) belongs to pipeline B of DMA i (portB side / lower tier).
+
     val semaphoreA = Vec(nDMAs, new TilelinkPort)
     val semaphoreB = Vec(nDMAs, new TilelinkPort)
   })
@@ -64,8 +37,25 @@ class MemSystem(implicit mc: MemSystemConfig) extends Module {
   val dmas = Seq.fill(nDMAs)(Module(new MemDMA))
 
   // ── Wire tier-0 external ports ────────────────────────────────────────────
-  tiers(0).io.writePorts <> io.tier0WritePorts
-  tiers(0).io.readPorts  <> io.tier0ReadPorts
+  tiers(0).io.writePorts <> io.tier3WritePorts
+  tiers(0).io.readPorts  <> io.tier3ReadPorts
+
+  // ── Terminate external ports on non-tier-0 tiers ─────────────────────────
+  // Only tier 0 has external access; tiers 1..N-1 have no software-visible
+  // write/read ports, so we drive their master-side signals to safe defaults.
+
+  for (i <- 1 until nTiers) {
+    tiers(i).io.writePorts.foreach { port =>
+      port.a.valid := false.B
+      port.a.bits  := DontCare
+      port.d.ready := false.B
+    }
+    tiers(i).io.readPorts.foreach { port =>
+      port.a.valid := false.B
+      port.a.bits  := DontCare
+      port.d.ready := false.B
+    }
+  }
 
   // ── Wire DMA interfaces and inter-tier connections ────────────────────────
   // DMA[i] connects:
@@ -81,11 +71,4 @@ class MemSystem(implicit mc: MemSystemConfig) extends Module {
     dmas(i).io.portA <> tiers(i).io.dmaPorts(portASlot)
     dmas(i).io.portB <> tiers(i + 1).io.dmaPorts(0)
   }
-}
-
-object MemSystem extends App {
-  _root_.circt.stage.ChiselStage.emitSystemVerilogFile(
-    new MemSystem()(MemSystemConfig.default()),
-    firtoolOpts = Array("-disable-all-randomization", "-strip-debug-info")
-  )
 }

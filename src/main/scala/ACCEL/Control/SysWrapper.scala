@@ -8,6 +8,9 @@ class SysWrapper(implicit c: Configuration) extends Module {
     val in         = new Readport(new ExecuteInstIssue, 0)
     val scratchOut = Vec(c.grainDim, new TilelinkPort)
     val scratchIn  = Vec(2, Vec(c.grainDim, new TilelinkPort))
+
+    val semaphoreIF = Flipped(new TilelinkPort)
+
     val debug      = new ExeDebug
   })
 

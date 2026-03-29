@@ -103,13 +103,15 @@ class MemDMATest extends AnyFreeSpec with Matchers with ChiselSim {
 
       dut.io.interface.descriptor.valid.poke(true.B)
 
+      // Pipeline A reads from portA; data flows via AtoB FIFO into pipeline B
       dut.io.interface.descriptor.bits(0).addr.poke(0x100.U)
       dut.io.interface.descriptor.bits(0).size.poke(1.U)
-      dut.io.interface.descriptor.bits(0).writeEn.poke(true.B)
+      dut.io.interface.descriptor.bits(0).writeEn.poke(false.B)
       dut.io.interface.descriptor.bits(0).source.poke(0.U)
       dut.io.interface.descriptor.bits(0).sink.poke(0.U)
       pokeDescNoSem(dut, 0)
 
+      // Pipeline B writes to portB using data from AtoB FIFO
       dut.io.interface.descriptor.bits(1).addr.poke(0x200.U)
       dut.io.interface.descriptor.bits(1).size.poke(1.U)
       dut.io.interface.descriptor.bits(1).writeEn.poke(true.B)
@@ -121,10 +123,23 @@ class MemDMATest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.interface.descriptor.valid.poke(false.B)
       dut.clock.step()
 
+      // Pipeline A issues a Get on portA
       waitFor(dut)(dut.io.portA.a.valid.peek().litToBoolean, "portA.a.valid")
-      dut.io.portA.a.bits.opcode.expect(TilelinkOpcodes.PutFullData)
+      dut.io.portA.a.bits.opcode.expect(TilelinkOpcodes.Get)
       dut.io.portA.a.bits.address.expect(0x100.U)
 
+      // Accept the read and supply data so AtoB FIFO gets filled
+      dut.io.portA.a.ready.poke(true.B)
+      dut.clock.step()
+      dut.io.portA.a.ready.poke(false.B)
+      dut.io.portA.d.valid.poke(true.B)
+      dut.io.portA.d.bits.opcode.poke(TilelinkOpcodes.AccessAckData)
+      dut.io.portA.d.bits.data.poke(0x42.U)
+      dut.clock.step()
+      dut.io.portA.d.valid.poke(false.B)
+      dut.clock.step()
+
+      // Pipeline B now has data and issues PutFullData on portB
       waitFor(dut)(dut.io.portB.a.valid.peek().litToBoolean, "portB.a.valid")
       dut.io.portB.a.bits.opcode.expect(TilelinkOpcodes.PutFullData)
       dut.io.portB.a.bits.address.expect(0x200.U)
@@ -211,11 +226,11 @@ class MemDMATest extends AnyFreeSpec with Matchers with ChiselSim {
       pokeSemPortsIdle(dut)
       dut.io.interface.response.ready.poke(false.B)
 
-      // Both descriptors: single-step write (size == semStepSize)
+      // Pipeline A reads from portA; pipeline B writes to portB using data from AtoB FIFO
       dut.io.interface.descriptor.valid.poke(true.B)
       dut.io.interface.descriptor.bits(0).addr.poke(0x100.U)
       dut.io.interface.descriptor.bits(0).size.poke(1.U)
-      dut.io.interface.descriptor.bits(0).writeEn.poke(true.B)
+      dut.io.interface.descriptor.bits(0).writeEn.poke(false.B)
       dut.io.interface.descriptor.bits(0).source.poke(0.U)
       dut.io.interface.descriptor.bits(0).sink.poke(0.U)
       dut.io.interface.descriptor.bits(0).semaphore.semEnable.poke(true.B)
@@ -260,17 +275,28 @@ class MemDMATest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.semaphoreA.d.valid.poke(false.B)
       dut.io.semaphoreB.d.valid.poke(false.B)
 
-      // After acquires: TL writes proceed, then ADDU on semaphore ports
-      for (port <- Seq(dut.io.portA, dut.io.portB)) {
-        waitFor(dut)(port.a.valid.peek().litToBoolean, "port.a.valid")
-        port.a.ready.poke(true.B)
-        dut.clock.step()
-        port.a.ready.poke(false.B)
-        port.d.valid.poke(true.B)
-        port.d.bits.opcode.poke(TilelinkOpcodes.AccessAck)
-        dut.clock.step()
-        port.d.valid.poke(false.B)
-      }
+      // After acquires: pipeline A reads portA (Get), pipeline B writes portB (PutFullData)
+      // Service portA read: respond with AccessAckData to populate AtoB FIFO for pipeline B
+      waitFor(dut)(dut.io.portA.a.valid.peek().litToBoolean, "portA.a.valid")
+      dut.io.portA.a.ready.poke(true.B)
+      dut.clock.step()
+      dut.io.portA.a.ready.poke(false.B)
+      dut.io.portA.d.valid.poke(true.B)
+      dut.io.portA.d.bits.opcode.poke(TilelinkOpcodes.AccessAckData)
+      dut.io.portA.d.bits.data.poke(0x42.U)
+      dut.clock.step()
+      dut.io.portA.d.valid.poke(false.B)
+      dut.clock.step()
+
+      // Service portB write: respond with AccessAck
+      waitFor(dut)(dut.io.portB.a.valid.peek().litToBoolean, "portB.a.valid")
+      dut.io.portB.a.ready.poke(true.B)
+      dut.clock.step()
+      dut.io.portB.a.ready.poke(false.B)
+      dut.io.portB.d.valid.poke(true.B)
+      dut.io.portB.d.bits.opcode.poke(TilelinkOpcodes.AccessAck)
+      dut.clock.step()
+      dut.io.portB.d.valid.poke(false.B)
 
       waitFor(dut)(dut.io.semaphoreA.a.valid.peek().litToBoolean, "semaphoreA ADDU")
       dut.io.semaphoreA.a.bits.param.expect(ArithmeticDataParam.ADDU)

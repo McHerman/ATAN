@@ -111,7 +111,7 @@ class MemDMAPipeline(implicit c: MemBusConfig) extends Module {
     is(1.U) {
       assert(effectiveSize =/= 0.U)
 
-      io.tl.a.valid        := true.B
+      io.tl.a.valid        := io.dataIn.valid
       io.tl.a.bits.opcode  := TilelinkOpcodes.PutFullData
       io.tl.a.bits.param   := 0.U
       io.tl.a.bits.address := effectiveAddr

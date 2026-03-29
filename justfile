@@ -11,7 +11,7 @@ test:
 
 # Run a specific test class (e.g. just test-only ATA8.LoadTest)
 test-only class:
-    mill ATAN.test.testOnly {{class}}
+    mill ATAN.test.testOnly ATA8.{{class}}
 
 # Generate SystemVerilog
 verilog:
