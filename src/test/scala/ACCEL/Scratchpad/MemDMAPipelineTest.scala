@@ -52,10 +52,10 @@ class MemDMAPipelineTest extends AnyFreeSpec with Matchers with ChiselSim {
   }
 
   def pokeDescNoSem(dut: TLDMA): Unit = {
-    dut.io.interface.descriptor.bits(0).semaphore.semEnable.poke(false.B)
-    dut.io.interface.descriptor.bits(0).semaphore.semAddr.poke(0.U)
-    dut.io.interface.descriptor.bits(0).semaphore.semStepSize.poke(0.U)
-    dut.io.interface.descriptor.bits(0).semaphore.mode.poke(0.U)
+    dut.io.interface.descriptor.bits(0).semaphore.get.semEnable.poke(false.B)
+    dut.io.interface.descriptor.bits(0).semaphore.get.semAddr.poke(0.U)
+    dut.io.interface.descriptor.bits(0).semaphore.get.semStepSize.poke(0.U)
+    dut.io.interface.descriptor.bits(0).semaphore.get.mode.poke(0.U)
   }
 
   /** Accept a semaphoreIF A-channel request and return an AccessAckData. */
@@ -202,10 +202,10 @@ class MemDMAPipelineTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.interface.descriptor.bits(0).writeEn.poke(true.B)
       dut.io.interface.descriptor.bits(0).source.poke(0.U)
       dut.io.interface.descriptor.bits(0).sink.poke(0.U)
-      dut.io.interface.descriptor.bits(0).semaphore.semEnable.poke(true.B)
-      dut.io.interface.descriptor.bits(0).semaphore.semAddr.poke(semAddr.U)
-      dut.io.interface.descriptor.bits(0).semaphore.semStepSize.poke(stepSize.U)
-      dut.io.interface.descriptor.bits(0).semaphore.mode.poke(0.U)
+      dut.io.interface.descriptor.bits(0).semaphore.get.semEnable.poke(true.B)
+      dut.io.interface.descriptor.bits(0).semaphore.get.semAddr.poke(semAddr.U)
+      dut.io.interface.descriptor.bits(0).semaphore.get.semStepSize.poke(stepSize.U)
+      dut.io.interface.descriptor.bits(0).semaphore.get.mode.poke(0.U)
       dut.clock.step()
       dut.io.interface.descriptor.valid.poke(false.B)
 
@@ -265,10 +265,10 @@ class MemDMAPipelineTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.interface.descriptor.bits(0).writeEn.poke(false.B)
       dut.io.interface.descriptor.bits(0).source.poke(0.U)
       dut.io.interface.descriptor.bits(0).sink.poke(0.U)
-      dut.io.interface.descriptor.bits(0).semaphore.semEnable.poke(true.B)
-      dut.io.interface.descriptor.bits(0).semaphore.semAddr.poke(semAddr.U)
-      dut.io.interface.descriptor.bits(0).semaphore.semStepSize.poke(stepSize.U)
-      dut.io.interface.descriptor.bits(0).semaphore.mode.poke(0.U)
+      dut.io.interface.descriptor.bits(0).semaphore.get.semEnable.poke(true.B)
+      dut.io.interface.descriptor.bits(0).semaphore.get.semAddr.poke(semAddr.U)
+      dut.io.interface.descriptor.bits(0).semaphore.get.semStepSize.poke(stepSize.U)
+      dut.io.interface.descriptor.bits(0).semaphore.get.mode.poke(0.U)
       dut.clock.step()
       dut.io.interface.descriptor.valid.poke(false.B)
 

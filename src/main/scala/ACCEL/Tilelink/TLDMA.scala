@@ -18,7 +18,7 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
   val io = IO(new Bundle {
     val tl        = new TilelinkPort
     val semaphoreIF = if (config.semaphore) Some(new TilelinkPort) else None
-    val interface = Flipped(new dmaInterface(1))
+    val interface = Flipped(new dmaInterface(1, config.semaphore))
     val dataIn    = if (config.write) Some(new Readport(UInt((c.dataBusSize * 8).W))) else None
     val dataOut   = if (config.read)  Some(Decoupled(UInt((c.dataBusSize * 8).W)))          else None
   })
@@ -46,7 +46,7 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
 
   // ── Registers ─────────────────────────────────────────────────────────────
   val StateReg      = RegInit(idle)
-  val reg           = Reg(new dmaDescriptor)
+  val reg           = Reg(new dmaDescriptor(config.semaphore))
   val beatCnt       = RegInit(0.U(24.W))
   val effectiveAddr = RegInit(0.U(c.addrWidth.W))
   val effectiveSize = RegInit(0.U(24.W))
@@ -62,8 +62,8 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
     sem.a.bits.param   := param
     sem.a.bits.size    := 1.U
     sem.a.bits.source  := 0.U
-    sem.a.bits.address := reg.semaphore.semAddr
-    sem.a.bits.data    := reg.semaphore.semStepSize
+    sem.a.bits.address := reg.semaphore.get.semAddr
+    sem.a.bits.data    := reg.semaphore.get.semStepSize
     sem.a.bits.mask    := Fill(c.dataBusSize, 1.U(1.W))
     sem.a.bits.corrupt := 0.U
   }
@@ -82,15 +82,15 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
 
         if (config.semaphore) {
           remaining.get := desc.size
-          effectiveSize := Mux(desc.semaphore.semEnable, desc.semaphore.semStepSize, desc.size)
+          effectiveSize := Mux(desc.semaphore.get.semEnable, desc.semaphore.get.semStepSize, desc.size)
         } else {
           effectiveSize := desc.size
         }
 
         StateReg := ((config.semaphore, config.read, config.write) match {
-          case (true, true, true)   => Mux(desc.semaphore.semEnable, semAcquire, Mux(desc.writeEn, writeFirst, readIssue))
-          case (true, _, true)      => Mux(desc.semaphore.semEnable, semAcquire, writeFirst)
-          case (true, true, _)      => Mux(desc.semaphore.semEnable, semAcquire, readIssue)
+          case (true, true, true)   => Mux(desc.semaphore.get.semEnable, semAcquire, Mux(desc.writeEn, writeFirst, readIssue))
+          case (true, _, true)      => Mux(desc.semaphore.get.semEnable, semAcquire, writeFirst)
+          case (true, true, _)      => Mux(desc.semaphore.get.semEnable, semAcquire, readIssue)
           case (false, true, true)  => Mux(desc.writeEn, writeFirst, readIssue)
           case (false, _, true)     => writeFirst
           case _                    => readIssue
@@ -160,7 +160,7 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
 
         when(effectiveSize === 0.U || io.tl.d.valid) {
           StateReg := (config.semaphore match {
-            case true  => Mux(reg.semaphore.semEnable, semRelease, writeRespond)
+            case true  => Mux(reg.semaphore.get.semEnable, semRelease, writeRespond)
             case false => writeRespond
           })
         }
@@ -216,7 +216,7 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
             beatCnt  := 0.U
 
             StateReg := (config.semaphore match {
-              case true  => Mux(reg.semaphore.semEnable, semRelease, readRespond)
+              case true  => Mux(reg.semaphore.get.semEnable, semRelease, readRespond)
               case false => readRespond
             })
 
@@ -278,12 +278,12 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
         when(sem.d.fire) {
           semAFired := false.B
 
-          val next = remaining.get - reg.semaphore.semStepSize
+          val next = remaining.get - reg.semaphore.get.semStepSize
 
           remaining.get := next
 
           when(next > 0.U) {
-            effectiveAddr := effectiveAddr + reg.semaphore.semStepSize
+            effectiveAddr := effectiveAddr + reg.semaphore.get.semStepSize
             StateReg := semAcquire
           }.otherwise {
             StateReg := ((config.read, config.write) match {

@@ -15,7 +15,7 @@ class semaphoreAccess(implicit c: MemBusConfig) extends Bundle {
   val mode        = UInt(3.W)
 }
 
-class dmaDescriptor(implicit c: MemBusConfig) extends Bundle {
+class dmaDescriptor(hasSemaphore: Boolean = true)(implicit c: MemBusConfig) extends Bundle {
   val addr    = UInt(c.addrWidth.W)
   val size    = UInt(24.W)
   val writeEn = Bool()
@@ -23,7 +23,7 @@ class dmaDescriptor(implicit c: MemBusConfig) extends Bundle {
   val source  = UInt(c.sourceWidth.W)
   val sink    = UInt(c.sourceWidth.W)
 
-  val semaphore = new semaphoreAccess
+  val semaphore = if (hasSemaphore) Some(new semaphoreAccess) else None
 } 
 
 class dmaResponse(implicit c: MemBusConfig) extends Bundle {
@@ -33,7 +33,7 @@ class dmaResponse(implicit c: MemBusConfig) extends Bundle {
   val corrupt = UInt(1.W)
 }
 
-class dmaInterface(size: Int)(implicit c: MemBusConfig) extends Bundle {
-  val descriptor = Decoupled(Vec(size,new dmaDescriptor))
-  val response = Flipped(Decoupled(new dmaResponse))
+class dmaInterface(size: Int, hasSemaphore: Boolean = true)(implicit c: MemBusConfig) extends Bundle {
+  val descriptor = Decoupled(Vec(size, new dmaDescriptor(hasSemaphore)))
+  val response   = Flipped(Decoupled(new dmaResponse))
 }
