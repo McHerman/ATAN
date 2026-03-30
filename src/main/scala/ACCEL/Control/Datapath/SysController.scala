@@ -24,7 +24,7 @@ object VectorFillerFunctions {
 
 class SysController(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
-    val in  = new Readport(new ExecuteInstIssue, 0)
+    val in  = new Readport(new ExecuteInstIssue)
 
     val dmaRead  = Vec(2, Vec(c.grainDim, new DMARead()))
     val dmaWrite = Vec(c.grainDim, new DMAWrite())

@@ -20,7 +20,7 @@ class TilelinkRWHandler(implicit c: MemBusConfig) extends Module {
         val writeData = Vec(c.dataBusSize, UInt(8.W))
         val strb      = Vec(c.dataBusSize, Bool())
       }, 16))
-    val rMem = new Readport(Vec(c.dataBusSize, UInt(c.arithDataWidth.W)), 16)
+    val rMem = new Readport(Vec(c.dataBusSize, UInt(c.arithDataWidth.W)), Some(16))
   })
 
   // ── Defaults ──────────────────────────────────────────────────────────────
@@ -114,7 +114,7 @@ class TilelinkRWHandler(implicit c: MemBusConfig) extends Module {
       when(io.rMem.request.ready) {
         // Issue next address every cycle (pipeline: response comes 1 cycle later)
         io.rMem.request.valid      := true.B
-        io.rMem.request.bits.addr  := addrReg
+        io.rMem.request.bits.addr.get  := addrReg
 
         // Forward response on D channel
         io.tl.d.valid              := io.rMem.response.valid

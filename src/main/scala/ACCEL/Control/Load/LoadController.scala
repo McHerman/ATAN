@@ -12,7 +12,7 @@ class LoadController(implicit c: Configuration) extends Module {
   }
 
   val io = IO(new Bundle {
-    val instructionStream = new Readport(new LoadInstIssue, 0)
+    val instructionStream = new Readport(new LoadInstIssue)
     val AXIST             = Flipped(new AXIST_2(64, 2, 1, 1, 1))
     val writeport         = new TilelinkPort
     val debug             = new LoadDebug

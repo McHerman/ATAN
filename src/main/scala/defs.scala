@@ -8,9 +8,9 @@ class ReadportSimple[T <: Data](private val dataType: T, val addrWidth: Int) ext
   val readData = Input(dataType.cloneType)
 }
 
-class Readport[T <: Data](private val dataType: T, val addrWidth: Int) extends Bundle {
+class Readport[T <: Data](private val dataType: T, val addrWidth: Option[Int] = None) extends Bundle {
   val request = Decoupled(new Bundle {
-    val addr = UInt(addrWidth.W)
+    val addr = addrWidth.map(w => UInt(w.W))
   })
   val response = Flipped(Valid(new Bundle {
     val readData = dataType.cloneType

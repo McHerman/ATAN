@@ -11,7 +11,7 @@ class ACCUFile(val hasDelay: Boolean)(implicit c: Configuration) extends Module 
     val ActivateOut = Output(Bool())
     val Shift = Input(Bool())
 
-    val Readport = Flipped(new Readport(Vec(c.dataBusSize,UInt(8.W)),0))
+    val Readport = Flipped(new Readport(Vec(c.dataBusSize,UInt(8.W))))
     val size = Input(UInt(log2Ceil(c.dataBusSize + 1).W))
 
     val State = Input(UInt(1.W))

@@ -9,7 +9,7 @@ class Grain(implicit c: Configuration) extends Module {
 
     val writePort = Vec(2,Vec(c.grainDim,Flipped(Decoupled(Vec(c.dataBusSize,UInt(8.W))))))
 
-    val readPort = Vec(c.grainDim,Flipped(new Readport(Vec(c.dataBusSize,UInt(c.arithDataWidth.W)),0)))
+    val readPort = Vec(c.grainDim,Flipped(new Readport(Vec(c.dataBusSize,UInt(c.arithDataWidth.W)))))
     val completed = Output(Bool())
   })
 
@@ -130,4 +130,3 @@ class Grain(implicit c: Configuration) extends Module {
     }
   }
 }
-

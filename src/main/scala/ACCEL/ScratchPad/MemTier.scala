@@ -71,7 +71,7 @@ class MemTierScratchpad(
         val strb      = Vec(c.dataBusSize, Bool())
       }, 16))))
     val Readport = Vec(readports, Flipped(new Readport(
-      Vec(c.dataBusSize, UInt(c.arithDataWidth.W)), 16)))
+      Vec(c.dataBusSize, UInt(c.arithDataWidth.W)), Some(16))))
   })
 
   val memBanks = Seq.fill(nBanks)(SyncReadMem(bankDepth, UInt((c.dataBusSize * 8).W)))
@@ -91,8 +91,8 @@ class MemTierScratchpad(
   // Read logic
   io.Readport.foreach { port =>
     port.request.ready := true.B
-    val bankIdx  = port.request.bits.addr(log2Ceil(nBanks) - 1, 0)
-    val bankAddr = port.request.bits.addr >> log2Ceil(nBanks)
+    val bankIdx  = port.request.bits.addr.get(log2Ceil(nBanks) - 1, 0)
+    val bankAddr = port.request.bits.addr.get >> log2Ceil(nBanks)
     val readResults = VecInit(memBanks.map(_.read(bankAddr, port.request.fire)))
     val bankIdxReg  = RegNext(bankIdx)
     port.response.bits.readData :=

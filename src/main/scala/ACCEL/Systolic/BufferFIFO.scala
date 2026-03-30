@@ -9,7 +9,7 @@ class BufferFIFO[T <: Data](val size: Int, val dataType: T) extends Module {
   
   val io = IO(new Bundle {
     val WriteData = Flipped(Decoupled(dataType))  // updated line
-    val ReadData = Flipped(new Readport(dataType,0))  // updated line
+    val ReadData = Flipped(new Readport(dataType))  // updated line
   })
 
   val Head = RegInit(0.U(pointerwidth.W))

@@ -6,7 +6,7 @@ import chisel3.util._
 class Scratchpad(writeports: Int, readports: Int)(implicit c: MemBusConfig) extends Module {
   val io = IO(new Bundle {
     val Writeport = Vec(writeports, Flipped(Decoupled(new Writeport(new Bundle{val writeData = Vec(c.dataBusSize,UInt(8.W)); val strb = Vec(c.dataBusSize, Bool())},16))))
-    val Readport = Vec(readports, Flipped(new Readport(Vec(c.dataBusSize,UInt(8.W)),16)))
+    val Readport = Vec(readports, Flipped(new Readport(Vec(c.dataBusSize,UInt(8.W)), Some(16))))
   })
 
   val numOfBanks = 16
@@ -30,8 +30,8 @@ class Scratchpad(writeports: Int, readports: Int)(implicit c: MemBusConfig) exte
   io.Readport.foreach { port =>
     port.request.ready := true.B
 
-    val bankIdx = port.request.bits.addr(log2Ceil(numOfBanks) - 1, 0)
-    val bankAddr = port.request.bits.addr >> log2Ceil(numOfBanks)
+    val bankIdx = port.request.bits.addr.get(log2Ceil(numOfBanks) - 1, 0)
+    val bankAddr = port.request.bits.addr.get >> log2Ceil(numOfBanks)
 
     val readResults = VecInit(memBanks.map(_.read(bankAddr, port.request.fire)))
     val bankIdxReg = RegNext(bankIdx)

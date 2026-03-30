@@ -6,7 +6,7 @@ import chisel3.util._
 class TilelinkReadHandler(implicit c: MemBusConfig) extends Module {
   val io = IO(new Bundle {
     val tl = Flipped(new TilelinkPort)
-    val mem = new Readport(Vec(c.dataBusSize, UInt(c.arithDataWidth.W)), 16)
+    val mem = new Readport(Vec(c.dataBusSize, UInt(c.arithDataWidth.W)), Some(16))
   })
 
   // Defaults
@@ -34,7 +34,7 @@ class TilelinkReadHandler(implicit c: MemBusConfig) extends Module {
   when(isLocked) {
     when(io.mem.request.ready) {
       io.mem.request.valid := true.B
-      io.mem.request.bits.addr := addrReg
+      io.mem.request.bits.addr.get := addrReg
 
       io.tl.d.valid := io.mem.response.valid
       io.tl.d.bits.opcode := TilelinkOpcodes.AccessAckData

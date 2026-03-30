@@ -13,7 +13,7 @@ class SysWriteDMA(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(new DMAWrite)
     val scratchOut = new TilelinkPort
-    val readPort = new Readport(Vec(c.dataBusSize, UInt(8.W)), 10)
+    val readPort = new Readport(Vec(c.dataBusSize, UInt(8.W)), Some(10))
   })
 
   io.in.request.ready := false.B
@@ -46,7 +46,7 @@ class SysWriteDMA(implicit c: Configuration) extends Module {
       }
     }
     is(1.U) { // Send first A beat (PutFull with data from readPort)
-      io.readPort.request.bits.addr := reg.addr + beatCnt
+      io.readPort.request.bits.addr.get := reg.addr + beatCnt
 
       when(reg.burstSize =/= 0.U) {
         io.readPort.request.valid := true.B
@@ -78,7 +78,7 @@ class SysWriteDMA(implicit c: Configuration) extends Module {
       }
     }
     is(2.U) { // Send remaining A beats
-      io.readPort.request.bits.addr := reg.addr + beatCnt
+      io.readPort.request.bits.addr.get := reg.addr + beatCnt
       io.readPort.request.valid := true.B
 
       when(io.readPort.response.valid) {
