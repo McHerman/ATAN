@@ -28,13 +28,14 @@ class MemDMA(implicit c: MemBusConfig) extends Module {
   io.interface.response.valid   := false.B
   io.interface.response.bits    := DontCare
 
-  val A = Module(new MemDMAPipeline())
-  val B = Module(new MemDMAPipeline())
+  val tlDMAConfig = TLDMAConfig(read = true, write = true, semaphore = true)
+  val A = Module(new TLDMA(tlDMAConfig))
+  val B = Module(new TLDMA(tlDMAConfig))
 
   io.portA      <> A.io.tl
   io.portB      <> B.io.tl
-  io.semaphoreA <> A.io.semaphoreIF
-  io.semaphoreB <> B.io.semaphoreIF
+  io.semaphoreA <> A.io.semaphoreIF.get
+  io.semaphoreB <> B.io.semaphoreIF.get
 
   A.io.interface.descriptor.valid := false.B
   A.io.interface.descriptor.bits  := DontCare
@@ -46,18 +47,12 @@ class MemDMA(implicit c: MemBusConfig) extends Module {
   val AtoB = Module(new BufferFIFO(8, UInt((c.dataBusSize * 8).W)))
   val BtoA = Module(new BufferFIFO(8, UInt((c.dataBusSize * 8).W)))
 
-  AtoB.io.WriteData <> A.io.dataOut
-  BtoA.io.WriteData <> B.io.dataOut
+  AtoB.io.WriteData <> A.io.dataOut.get
+  BtoA.io.WriteData <> B.io.dataOut.get
 
-  AtoB.io.ReadData.request.valid     := B.io.dataIn.ready
-  AtoB.io.ReadData.request.bits.addr := DontCare
-  BtoA.io.ReadData.request.valid     := A.io.dataIn.ready
-  BtoA.io.ReadData.request.bits.addr := DontCare
+  AtoB.io.ReadData <> B.io.dataIn.get
+  BtoA.io.ReadData <> A.io.dataIn.get
 
-  A.io.dataIn.valid := BtoA.io.ReadData.request.ready
-  A.io.dataIn.bits  := BtoA.io.ReadData.response.bits.readData
-  B.io.dataIn.valid := AtoB.io.ReadData.request.ready
-  B.io.dataIn.bits  := AtoB.io.ReadData.response.bits.readData
 
   val aResponseReg = RegInit(false.B)
   val bResponseReg = RegInit(false.B)
