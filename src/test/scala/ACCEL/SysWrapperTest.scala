@@ -208,7 +208,7 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
       sendAccessAck(dut.clock, writePort)
     }
   }
-  "SysWrapper should execute OS" in {
+  "SysWrapper should execute OS without semaphore" in {
     simulate(new SysWrapper()(Configuration.test())) { dut =>
       dut.io.scratchIn.flatten.foreach(pokeTLIdle)
       dut.io.scratchOut.foreach(pokeTLIdle)

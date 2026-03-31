@@ -33,7 +33,7 @@ class SysArrayTest extends AnyFreeSpec with Matchers with ChiselSim {
       }
   }
 
-  "SysArray should execute in mode 0" in {
+  "SysArray should execute WS" in {
     //val n = 2 + Random.nextInt(30)
     //val n = 16
 
@@ -105,7 +105,7 @@ class SysArrayTest extends AnyFreeSpec with Matchers with ChiselSim {
     }
   }
 
-  "SysArray should execute in mode 1" in {
+  "SysArray should execute OS" in {
     implicit val c = Configuration.default()
 
     simulate(new Grain()) { dut =>
