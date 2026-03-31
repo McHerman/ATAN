@@ -46,28 +46,26 @@ class SysWrapper(implicit c: Configuration) extends Module {
     dma.io.tl <> port
   }
 
-  // TODO: Connect ReadDMA dmaInterface to SysController
-  //(SysController.io.dmaRead.flatten zip ReadDMA.flatten).foreach { case (command, dma) =>
-  //  command <> dma.io.interface
-  //}
+  (SysController.io.dmaRead.flatten zip ReadDMA.flatten).foreach { case (command, dma) =>
+    command <> dma.io.interface
+  }
 
   // WriteDMA TileLink ports
   (io.scratchOut zip WriteDMA).foreach { case (port, dma) =>
     dma.io.tl <> port
   }
 
-  // TODO: Connect WriteDMA dmaInterface to SysController
-  //(SysController.io.dmaWrite zip WriteDMA).foreach { case (command, dma) =>
-  //  dma.io.interface <> command
-  //}
+  (SysController.io.dmaWrite zip WriteDMA).foreach { case (command, dma) =>
+    dma.io.interface <> command
+  }
 
   // Grain readPort -> WriteDMA dataIn (Vec[UInt] <-> flat UInt conversion)
   (SysGrain.io.readPort zip WriteDMA).foreach { case (port, dma) =>
     val dataIn = dma.io.dataIn.get
-    port.request.ready       := dataIn.request.ready
-    dataIn.request.valid     := port.request.valid
-    dataIn.response.valid    := port.response.valid
-    port.response.bits.readData := dataIn.response.bits.readData.asTypeOf(port.response.bits.readData)
+    port.request.valid          := dataIn.request.valid
+    dataIn.request.ready        := port.request.ready
+    dataIn.response.valid       := port.response.valid
+    dataIn.response.bits.readData := port.response.bits.readData.asTypeOf(dataIn.response.bits.readData)
   }
 
   // Semaphore interfaces

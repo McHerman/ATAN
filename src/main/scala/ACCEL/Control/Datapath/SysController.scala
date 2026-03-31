@@ -120,7 +120,7 @@ class SysController(implicit c: Configuration) extends Module {
 
             dma.descriptor.bits(0).semaphore.get.semEnable := addrs.sem.valid
             dma.descriptor.bits(0).semaphore.get.semAddr := addrs.sem.bits.addr
-            dma.descriptor.bits(0).semaphore.get.semStepSize := addrs.sem.bits.stepSize
+            dma.descriptor.bits(0).semaphore.get.semStepSize := addrs.sem.bits.stepSize.bits
           }
         }
         StateReg := 2.U
@@ -176,7 +176,7 @@ class SysController(implicit c: Configuration) extends Module {
 
         dma.descriptor.bits(0).semaphore.get.semEnable := op.addrPkg.sem.valid
         dma.descriptor.bits(0).semaphore.get.semAddr := op.addrPkg.sem.bits.addr
-        dma.descriptor.bits(0).semaphore.get.semStepSize := op.addrPkg.sem.bits.stepSize
+        dma.descriptor.bits(0).semaphore.get.semStepSize := op.addrPkg.sem.bits.stepSize.bits
       }
     }
   }

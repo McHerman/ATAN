@@ -46,7 +46,7 @@ package object ATA8 {
         64,  // grainFIFOSize
         64,  // grainACCUSize
         8,    // arithDataWidth
-        32,   // accDataWidth
+        8,   // accDataWidth
         1,    // modeWidth
         8,    // tagCount
         16,   // addrWidth
@@ -54,5 +54,7 @@ package object ATA8 {
         1     // sourceWidth
       )
     }
+
+    def test(): Configuration = default()
   }
 }
