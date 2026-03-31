@@ -26,8 +26,13 @@ class SysController(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
     val in  = new Readport(new ExecuteInstIssue)
 
+    /*
     val dmaRead  = Vec(2, Vec(c.grainDim, new DMARead()))
     val dmaWrite = Vec(c.grainDim, new DMAWrite())
+    */
+
+    val dmaRead  = Vec(2, Vec(c.grainDim, new dmaInterface(hasSemaphore = true)))
+    val dmaWrite = Vec(c.grainDim, new dmaInterface(hasSemaphore = true))
 
     val out          = Decoupled(new SysOP)
     val sysCompleted = Input(Bool())
@@ -35,7 +40,8 @@ class SysController(implicit c: Configuration) extends Module {
   })
 
   val opbuffer   = Module(new BufferFIFO(8, new SysOP))
-  val readBuffer = Module(new BufferFIFO(8, new Bundle { val addr = UInt(16.W); val size = UInt(8.W) }))
+  // TODO Replace with sem equivalent.
+  val readBuffer = Module(new BufferFIFO(8, new Bundle { val addrPkg = new addrPkg; val size = UInt(8.W) }))
 
   io.in.request.valid := false.B
   io.in.request.bits  := DontCare
@@ -43,9 +49,17 @@ class SysController(implicit c: Configuration) extends Module {
   io.out.valid := false.B
   io.out.bits  := DontCare
 
+
+  /*
   io.dmaRead(0).foreach { e => e.request.valid := false.B; e.request.bits := DontCare; e.response.ready := false.B }
   io.dmaRead(1).foreach { e => e.request.valid := false.B; e.request.bits := DontCare; e.response.ready := false.B }
   io.dmaWrite.foreach   { e => e.request.valid := false.B; e.request.bits := DontCare; e.response.ready := false.B }
+  */
+
+  io.dmaRead(0).foreach { e => e.descriptor.valid := false.B; e.descriptor.bits := DontCare; e.response.ready := false.B }
+  io.dmaRead(1).foreach { e => e.descriptor.valid := false.B; e.descriptor.bits := DontCare; e.response.ready := false.B }
+  io.dmaWrite.foreach   { e => e.descriptor.valid := false.B; e.descriptor.bits := DontCare; e.response.ready := false.B }
+
 
   opbuffer.io.WriteData.valid  := false.B
   opbuffer.io.WriteData.bits   := DontCare
@@ -74,6 +88,7 @@ class SysController(implicit c: Configuration) extends Module {
       }
     }
     is(1.U) { // Invoke read DMAs
+      /*
       val readySignals = VecInit(io.dmaRead.flatten.map(_.request.ready))
       when(readySignals.reduceTree(_ && _)) {
         (reg.addrs zip io.dmaRead).foreach { case (addrs, dmaSeq) =>
@@ -88,9 +103,35 @@ class SysController(implicit c: Configuration) extends Module {
         }
         StateReg := 2.U
       }
+      */
+
+      val readySignals = VecInit(io.dmaRead.flatten.map(_.descriptor.ready))
+      when(readySignals.reduceTree(_ && _)) {
+        (reg.addrs zip io.dmaRead).foreach { case (addrs, dmaSeq) =>
+          val readSizes = VectorFillerFunctions.buildTree(reg.size, c.grainDim, c.dataBusSize)
+          (dmaSeq zip readSizes.zipWithIndex).foreach { case (dma, (size, index)) =>
+            val addrSum = if (index == 0) 0.U else readSizes.take(index).reduce(_ + _)
+            dma.descriptor.bits(0).addr := addrs.addr + addrSum
+            dma.descriptor.bits(0).size := size
+            dma.descriptor.valid := true.B
+            dma.descriptor.bits(0).writeEn := false.B
+            dma.descriptor.bits(0).source := DontCare
+            dma.descriptor.bits(0).sink := DontCare
+
+            dma.descriptor.bits(0).semaphore.get.semEnable := addrs.sem.valid
+            dma.descriptor.bits(0).semaphore.get.semAddr := addrs.sem.bits.addr
+            dma.descriptor.bits(0).semaphore.get.semStepSize := addrs.sem.bits.stepSize
+          }
+        }
+        StateReg := 2.U
+      }
+
+
+
+
     }
     is(2.U) { // Wait for read DMAs
-      val completedSignals = VecInit(io.dmaRead.flatten.map { c => c.response.valid && c.response.bits.completed })
+      val completedSignals = VecInit(io.dmaRead.flatten.map { c => c.response.valid && !(c.response.bits.denied.asBool || c.response.bits.corrupt.asBool) })
       when(completedSignals.reduceTree(_ && _)) {
         io.dmaRead.flatten.foreach { e => e.response.ready := true.B }
         StateReg := 3.U
@@ -104,7 +145,7 @@ class SysController(implicit c: Configuration) extends Module {
         opbuffer.io.WriteData.bits.sizes  := VectorFillerFunctions.buildTree(reg.size, c.grainDim, c.dataBusSize)
 
         readBuffer.io.WriteData.valid      := true.B
-        readBuffer.io.WriteData.bits.addr  := reg.addrd(0).addr
+        readBuffer.io.WriteData.bits.addrPkg  := reg.addrd(0)
         readBuffer.io.WriteData.bits.size  := reg.size
 
         StateReg := 0.U
@@ -114,23 +155,34 @@ class SysController(implicit c: Configuration) extends Module {
 
   // Write-back when systolic array completes
   when(io.sysCompleted && readBuffer.io.ReadData.request.ready) {
-    val readySignals = VecInit(io.dmaWrite.map(_.request.ready))
+    val readySignals = VecInit(io.dmaWrite.map(_.descriptor.ready))
     when(readySignals.reduceTree(_ && _)) {
       readBuffer.io.ReadData.request.valid := true.B
       val op         = readBuffer.io.ReadData.response.bits.readData
       val writeSizes = VectorFillerFunctions.buildTree(op.size, c.grainDim, c.dataBusSize)
       (io.dmaWrite zip writeSizes.zipWithIndex).foreach { case (dma, (size, index)) =>
         val addrSum = if (index == 0) 0.U else writeSizes.take(index).reduce(_ + _)
+
+        /*
         dma.request.bits.addr      := op.addr + addrSum
         dma.request.bits.burstSize := size
         dma.request.bits.burstCnt  := op.size
         dma.request.valid          := true.B
+        */
+
+        dma.descriptor.bits(0).addr := op.addrPkg.addr + addrSum
+        dma.descriptor.bits(0).size := op.size
+        dma.descriptor.valid := true.B
+
+        dma.descriptor.bits(0).semaphore.get.semEnable := op.addrPkg.sem.valid
+        dma.descriptor.bits(0).semaphore.get.semAddr := op.addrPkg.sem.bits.addr
+        dma.descriptor.bits(0).semaphore.get.semStepSize := op.addrPkg.sem.bits.stepSize
       }
     }
   }
 
   // Acknowledge write DMAs when all complete
-  val writeCompletedSignals = VecInit(io.dmaWrite.map { c => c.response.valid && c.response.bits.completed })
+  val writeCompletedSignals = VecInit(io.dmaWrite.map { c => c.response.valid && !c.response.bits.denied.asBool && !c.response.bits.corrupt.asBool })
   when(writeCompletedSignals.reduceTree(_ && _)) {
     io.dmaWrite.foreach { e => e.response.ready := true.B }
   }

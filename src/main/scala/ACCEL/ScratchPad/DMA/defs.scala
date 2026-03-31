@@ -9,10 +9,10 @@ object SemaphoreAccessModes {
 }
 
 class semaphoreAccess(implicit c: MemBusConfig) extends Bundle {
-  val semAddr     = UInt(16.W)
-  val semStepSize = UInt(16.W)
   val semEnable   = Bool()
   val mode        = UInt(3.W)
+  val semAddr     = UInt(16.W)
+  val semStepSize = UInt(16.W)
 }
 
 class dmaDescriptor(hasSemaphore: Boolean = true)(implicit c: MemBusConfig) extends Bundle {
@@ -33,7 +33,7 @@ class dmaResponse(implicit c: MemBusConfig) extends Bundle {
   val corrupt = UInt(1.W)
 }
 
-class dmaInterface(size: Int, hasSemaphore: Boolean = true)(implicit c: MemBusConfig) extends Bundle {
+class dmaInterface(size: Int = 1, hasSemaphore: Boolean = true)(implicit c: MemBusConfig) extends Bundle {
   val descriptor = Decoupled(Vec(size, new dmaDescriptor(hasSemaphore)))
   val response   = Flipped(Decoupled(new dmaResponse))
 }

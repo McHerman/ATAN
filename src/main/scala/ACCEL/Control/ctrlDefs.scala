@@ -10,8 +10,8 @@ class InstructionPackage extends Bundle {
 abstract class InstBase(addrsSize: Int, addrdSize: Int)(implicit c: Configuration) extends Bundle {
   val op = UInt(1.W)
   val size = UInt(8.W)
-  val addrs = Vec(addrsSize, new Bundle { val addr = UInt(16.W) })
-  val addrd = Vec(addrdSize, new Bundle { val addr = UInt(16.W) })
+  val addrs = Vec(addrsSize, new Bundle { val addr = UInt(16.W); val semaddress = Valid(UInt(4.W)) })
+  val addrd = Vec(addrdSize, new Bundle { val addr = UInt(16.W); val semaddress = Valid(UInt(4.W)) })
 }
 
 class ExecuteInst(implicit c: Configuration) extends InstBase(2, 1) {
@@ -26,11 +26,16 @@ class StoreInst(implicit c: Configuration) extends InstBase(1, 0) {
   //val mode = UInt(1.W)
 }
 
+class addrPkg(implicit c: Configuration) extends Bundle {
+  val addr = UInt(16.W); 
+  val sem = Valid(new Bundle { val addr = UInt(16.W); val stepSize = Valid(UInt(4.W)) })
+}
+
 abstract class InstIssueBase(addrsSize: Int, addrdSize: Int)(implicit c: Configuration) extends Bundle {
   val op = UInt(1.W)
   val size = UInt(8.W)
-  val addrs = Vec(addrsSize, new Bundle { val addr = UInt(16.W) })
-  val addrd = Vec(addrdSize, new Bundle { val addr = UInt(16.W) })
+  val addrs = Vec(addrsSize, new addrPkg())
+  val addrd = Vec(addrdSize, new addrPkg())
 }
 
 class ExecuteInstIssue(implicit c: Configuration) extends InstIssueBase(2, 1) {
