@@ -3,7 +3,7 @@ package ATA8
 import chisel3._
 import chisel3.util._
 
-class PEY(val dataWidth: Int, val statewidth: Int) extends Bundle {
+class PEY(val dataWidth: Int) extends Bundle {
   val Y = Output(UInt(dataWidth.W))
 }
 

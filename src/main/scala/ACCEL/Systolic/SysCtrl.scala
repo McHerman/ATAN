@@ -66,10 +66,10 @@ class SysCtrl(implicit c: Configuration) extends Module {
         inReg := io.in.bits
   
         switch(io.in.bits.mode){
-          is(0.U){
+          is(0.U){ // WS
             StateReg := 1.U
           }
-          is(1.U){
+          is(1.U){ // OS
             StateReg := 5.U
           }
         }
