@@ -21,10 +21,12 @@ class Load(implicit c: Configuration) extends Module {
 
   queue.io.WriteData <> io.instructionStream
 
+
   LoadController.io.instructionStream <> queue.io.ReadData
   LoadController.io.AXIST             <> io.AXIST
 
-  io.scratchOut <> LoadController.io.writeport
+  io.scratchOut    <> LoadController.io.writeport
+  io.semaphoreIF   <> LoadController.io.semaphoreIF
 
   /// DEBUG ///
 
