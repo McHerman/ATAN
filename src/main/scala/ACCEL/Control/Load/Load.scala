@@ -11,7 +11,7 @@ class Load(implicit c: Configuration) extends Module {
     val AXIST      = Flipped(new AXIST_2(64, 2, 1, 1, 1))
     val scratchOut = new TilelinkPort
 
-    val semaphoreIF = Flipped(new TilelinkPort)
+    val semaphoreIF = new TilelinkPort
 
     val debug = new LoadDebug
   })

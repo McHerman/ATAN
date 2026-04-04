@@ -15,7 +15,7 @@ class LoadController(implicit c: Configuration) extends Module {
     val instructionStream = new Readport(new LoadInstIssue)
     val AXIST             = Flipped(new AXIST_2(64, 2, 1, 1, 1))
     val writeport         = new TilelinkPort
-    val semaphoreIF       = Flipped(new TilelinkPort)
+    val semaphoreIF       = new TilelinkPort
     val debug             = new LoadDebug
   })
 
@@ -70,7 +70,7 @@ class LoadController(implicit c: Configuration) extends Module {
         ReadDMA.io.interface.descriptor.bits(0).semaphore.get.mode := SemaphoreAccessModes.RestartOnStep
 
         ReadDMA.io.interface.descriptor.bits(0).semaphore.get.semAddr := reg.addrd(0).sem.bits.addr
-        ReadDMA.io.interface.descriptor.bits(0).semaphore.get.semStepSize := reg.addrd(0).sem.bits.stepSize
+        ReadDMA.io.interface.descriptor.bits(0).semaphore.get.semStepSize := reg.addrd(0).sem.bits.stepSize.bits
 
         StateReg := 2.U
       }
