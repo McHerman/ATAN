@@ -10,6 +10,7 @@ class Store(implicit c: Configuration) extends Module {
 
     val AXIST    = new AXIST_2(64, 2, 1, 1, 1)
     val readPort = new TilelinkPort
+    val semaphoreIF = new TilelinkPort
 
     val debug = new StoreDebug
   })
@@ -22,7 +23,8 @@ class Store(implicit c: Configuration) extends Module {
   StoreController.io.instructionStream <> queue.io.ReadData
   StoreController.io.AXIST             <> io.AXIST
 
-  io.readPort <> StoreController.io.readport
+  io.readPort     <> StoreController.io.readport
+  io.semaphoreIF  <> StoreController.io.semaphoreIF
 
   /// DEBUG ///
 
