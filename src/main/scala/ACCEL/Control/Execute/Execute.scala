@@ -6,7 +6,7 @@ import chisel3.util._
 
 class Execute(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
-    val instructionStream = Flipped(Decoupled(new ExecuteInstIssue))
+    val instructionStream = Flipped(Decoupled(new ExecuteInst))
 
     val scratchOut = Vec(c.grainDim, new TilelinkPort)
     val scratchIn  = Vec(2, new TilelinkPort)
@@ -16,7 +16,7 @@ class Execute(implicit c: Configuration) extends Module {
     val debug = new ExeDebug
   })
 
-  val queue      = Module(new BufferFIFO(32, new ExecuteInstIssue))
+  val queue      = Module(new BufferFIFO(32, new ExecuteInst))
   val SysWrapper = Module(new SysWrapper)
 
   queue.io.WriteData <> io.instructionStream

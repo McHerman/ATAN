@@ -6,7 +6,7 @@ import chisel3.util._
 
 class StoreController(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
-    val instructionStream = new Readport(new StoreInstIssue)
+    val instructionStream = new Readport(new StoreInst)
     val AXIST = new AXIST_2(64, 2, 1, 1, 1)
     val readport = new TilelinkPort
     val semaphoreIF = new TilelinkPort
@@ -32,7 +32,7 @@ class StoreController(implicit c: Configuration) extends Module {
 
   StoreDMA.io.dataOut.get.ready := false.B
 
-  val reg = Reg(new StoreInstIssue)
+  val reg = Reg(new StoreInst)
   val StateReg = RegInit(0.U(4.W))
 
   /// DEBUG ///

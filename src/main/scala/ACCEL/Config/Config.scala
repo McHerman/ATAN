@@ -13,7 +13,7 @@ class Config(implicit c: Configuration) extends Module {
     val storeDebug  = Flipped(new StoreDebug)
     val receiverDebug = Flipped(Valid(UInt(64.W)))
     val decodeDebug   = Flipped(Valid(new LoadInst))
-    val decodeOutLoad = Flipped(Valid(new LoadInstIssue))
+    val decodeOutLoad = Flipped(Valid(new LoadInst))
     val frontEndDebug = Input(new Bundle {
       val decodeReady   = Bool()
       val exeOutReady   = Bool()

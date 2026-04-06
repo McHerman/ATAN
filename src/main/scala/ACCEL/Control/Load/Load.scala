@@ -6,7 +6,7 @@ import chisel3.util._
 
 class Load(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
-    val instructionStream = Flipped(Decoupled(new LoadInstIssue))
+    val instructionStream = Flipped(Decoupled(new LoadInst))
 
     val AXIST      = Flipped(new AXIST_2(64, 2, 1, 1, 1))
     val scratchOut = new TilelinkPort
@@ -16,7 +16,7 @@ class Load(implicit c: Configuration) extends Module {
     val debug = new LoadDebug
   })
 
-  val queue          = Module(new BufferFIFO(32, new LoadInstIssue))
+  val queue          = Module(new BufferFIFO(32, new LoadInst))
   val LoadController = Module(new LoadController)
 
   queue.io.WriteData <> io.instructionStream

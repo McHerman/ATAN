@@ -4,53 +4,22 @@ import chisel3._
 import chisel3.util._
 import chisel3.util.MixedVec._
 
-class ExeInstDecode(implicit c: Configuration) extends Bundle {
-  val addrd = UInt(16.W) // Dest Address
-  val addrs2 = UInt(16.W)
-  val addrs1 = UInt(16.W)
-  val size = UInt(8.W)
-  val mode = UInt(1.W)
-  val op2 = UInt(1.W)
-  val op = UInt(2.W) // TODO: magic number
-  val func = UInt(4.W)
-}
-
-class LoadInstDecode(implicit c: Configuration) extends Bundle {
-  val addr = UInt(32.W)
-  val size = UInt(8.W)
-  val fill = UInt(18.W)
-  val mode = UInt(1.W)  
-  val op = UInt(1.W) // TODO: magic number  
-  val func = UInt(4.W)
-} 
-
-class StoreInstDecode(implicit c: Configuration) extends Bundle {
-  val addr = UInt(32.W)
-  val size = UInt(8.W)
-  val fill = UInt(19.W)
-  val op = UInt(1.W) // TODO: magic number
-  val func = UInt(4.W)
-} 
-
 class Decoder(implicit c: Configuration) extends Module {
-//class Decoder(config: Configuration) extends Module {
 
   val io = IO(new Bundle {
     val instructionStream = Flipped(Decoupled(new InstructionPackage))
-    val issueStream = Decoupled(new Bundle{val op = UInt(4.W); val data = MixedVec(new ExecuteInst, new LoadInst, new StoreInst)})    
+    val issueStream = Decoupled(new Bundle{val op = UInt(6.W); val data = MixedVec(new ExecuteInst, new LoadInst, new StoreInst)})
   })
-  
-  io.instructionStream.ready := false.B
 
+  io.instructionStream.ready := false.B
   io.issueStream.valid := false.B
+  io.issueStream.bits := DontCare
 
   val inReg = RegInit(0.U.asTypeOf(new InstructionPackage))
-  
   val stall = WireDefault(false.B)
 
   when(!stall){
     io.instructionStream.ready := true.B
-
     when(io.instructionStream.valid){
       inReg := io.instructionStream.bits
     }.otherwise{
@@ -58,35 +27,21 @@ class Decoder(implicit c: Configuration) extends Module {
     }
   }
 
-  val temp = Wire(MixedVec(new ExeInstDecode, new LoadInstDecode, new StoreInstDecode))
+  val inst = inReg.instruction
 
-  io.issueStream.bits.op := inReg.instruction(3,0)
+  // Opcode is shared across all instruction types at bits [5:0]
+  io.issueStream.bits.op := inst(5, 0)
 
-  temp.foreach{decode => 
-    decode := inReg.instruction.asTypeOf(decode.cloneType)
-  }
+  // Decode all instruction types from raw bits using their layout annotations
+  val exe = Wire(new ExecuteInst); exe.decodeFrom(inst)
+  val ld  = Wire(new LoadInst);    ld.decodeFrom(inst)
+  val st  = Wire(new StoreInst);   st.decodeFrom(inst)
 
-  io.issueStream.bits.data(0).asInstanceOf[ExecuteInst].addrs(0).addr := temp(0).asInstanceOf[ExeInstDecode].addrs1
-  io.issueStream.bits.data(0).asInstanceOf[ExecuteInst].addrs(1).addr := temp(0).asInstanceOf[ExeInstDecode].addrs2
-  io.issueStream.bits.data(0).asInstanceOf[ExecuteInst].addrd(0).addr := temp(0).asInstanceOf[ExeInstDecode].addrd
-  io.issueStream.bits.data(0).asInstanceOf[ExecuteInst].op := temp(0).asInstanceOf[ExeInstDecode].op2
-  io.issueStream.bits.data(0).asInstanceOf[ExecuteInst].size := temp(0).asInstanceOf[ExeInstDecode].size
-  io.issueStream.bits.data(0).asInstanceOf[ExecuteInst].mode := temp(0).asInstanceOf[ExeInstDecode].mode
-  //io.issueStream.bits.data(0).asInstanceOf[ExecuteInst].grainSize := temp(0).asInstanceOf[ExeInstDecode].grainSize
+  io.issueStream.bits.data(0).asInstanceOf[ExecuteInst] := exe
+  io.issueStream.bits.data(1).asInstanceOf[LoadInst]    := ld
+  io.issueStream.bits.data(2).asInstanceOf[StoreInst]   := st
 
-
-  io.issueStream.bits.data(1).asInstanceOf[LoadInst].addrd(0).addr := temp(1).asInstanceOf[LoadInstDecode].addr
-  io.issueStream.bits.data(1).asInstanceOf[LoadInst].op := temp(1).asInstanceOf[LoadInstDecode].op
-  io.issueStream.bits.data(1).asInstanceOf[LoadInst].size := temp(1).asInstanceOf[LoadInstDecode].size
-  io.issueStream.bits.data(1).asInstanceOf[LoadInst].mode := temp(1).asInstanceOf[LoadInstDecode].mode
-
-
-  io.issueStream.bits.data(2).asInstanceOf[StoreInst].addrs(0).addr := temp(2).asInstanceOf[StoreInstDecode].addr
-  io.issueStream.bits.data(2).asInstanceOf[StoreInst].op := temp(2).asInstanceOf[StoreInstDecode].op
-  io.issueStream.bits.data(2).asInstanceOf[StoreInst].size := temp(2).asInstanceOf[StoreInstDecode].size
-  //io.issueStream.bits.data(2).asInstanceOf[StoreInst].mode := temp(2).asInstanceOf[StoreInstDecode].mode
-
-  when(inReg.instruction(3,0) =/= 0.U){
+  when(inst(5, 0) =/= 0.U){
     when(io.issueStream.ready){
       io.issueStream.valid := true.B
     }.otherwise{

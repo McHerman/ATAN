@@ -12,7 +12,7 @@ class LoadController(implicit c: Configuration) extends Module {
   }
 
   val io = IO(new Bundle {
-    val instructionStream = new Readport(new LoadInstIssue)
+    val instructionStream = new Readport(new LoadInst)
     val AXIST             = Flipped(new AXIST_2(64, 2, 1, 1, 1))
     val writeport         = new TilelinkPort
     val semaphoreIF       = new TilelinkPort
@@ -40,7 +40,7 @@ class LoadController(implicit c: Configuration) extends Module {
   ReadDMA.io.dataIn.get.response.valid := false.B
   ReadDMA.io.dataIn.get.response.bits.readData := DontCare
 
-  val reg           = Reg(new LoadInstIssue)
+  val reg           = Reg(new LoadInst)
   val StateReg      = RegInit(0.U(4.W))
 
   /// DEBUG ///

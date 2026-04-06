@@ -24,7 +24,7 @@ object VectorFillerFunctions {
 
 class SysController(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
-    val in  = new Readport(new ExecuteInstIssue)
+    val in  = new Readport(new ExecuteInst)
 
     /*
     val dmaRead  = Vec(2, Vec(c.grainDim, new DMARead()))
@@ -71,7 +71,7 @@ class SysController(implicit c: Configuration) extends Module {
   readBuffer.io.ReadData.request.valid := false.B
   readBuffer.io.ReadData.request.bits  := DontCare
 
-  val reg      = Reg(new ExecuteInstIssue)
+  val reg      = Reg(new ExecuteInst)
   val StateReg = RegInit(0.U(4.W))
 
   /// DEBUG ///

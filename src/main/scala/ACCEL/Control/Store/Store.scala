@@ -6,7 +6,7 @@ import chisel3.util._
 
 class Store(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
-    val instructionStream = Flipped(Decoupled(new StoreInstIssue))
+    val instructionStream = Flipped(Decoupled(new StoreInst))
 
     val AXIST    = new AXIST_2(64, 2, 1, 1, 1)
     val readPort = new TilelinkPort
@@ -15,7 +15,7 @@ class Store(implicit c: Configuration) extends Module {
     val debug = new StoreDebug
   })
 
-  val queue           = Module(new BufferFIFO(32, new StoreInstIssue))
+  val queue           = Module(new BufferFIFO(32, new StoreInst))
   val StoreController = Module(new StoreController)
 
   queue.io.WriteData <> io.instructionStream
