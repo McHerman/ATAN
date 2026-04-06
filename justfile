@@ -13,6 +13,9 @@ test:
 test-only class:
     mill ATAN.test.testOnly ATA8.{{class}}
 
+test-only-trace class:
+    mill ATAN.test.testOnly ATA8.{{class}} -- -DemitVcd=1
+
 # Generate SystemVerilog
 verilog:
     mill ATAN.run
