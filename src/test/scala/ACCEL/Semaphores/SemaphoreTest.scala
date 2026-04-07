@@ -766,14 +766,14 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
     }
   }
 
-  "progPort reprogramming should take effect on subsequent requests" in {
+  "progPort reprogramming should take effect on subsequent requests after completion" in {
     implicit val c = Configuration.default()
     simulate(new Semaphore()) { dut =>
       defaultPokes(dut)
 
       dut.io.progPort.valid.poke(true.B)
       dut.io.progPort.bits(0).poke(10.U)
-      dut.io.progPort.bits(1).poke(5.U)
+      dut.io.progPort.bits(1).poke(0.U)
       dut.clock.step()
       dut.io.progPort.valid.poke(false.B)
 
@@ -787,7 +787,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.inPorts(1).a.bits.opcode.poke(TilelinkOpcodes.ArithmeticData)
       dut.io.inPorts(1).a.bits.param.poke(ArithmeticDataParam.AQGREQ)
       dut.io.inPorts(1).a.bits.address.poke(0.U)
-      dut.io.inPorts(1).a.bits.data.poke(0.U)
+      dut.io.inPorts(1).a.bits.data.poke(10.U)
       dut.io.inPorts(1).a.bits.source.poke(0.U)
       dut.io.inPorts(1).a.bits.size.poke(0.U)
       dut.io.inPorts(1).a.bits.mask.poke(0.U)
@@ -809,7 +809,56 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       ////////////////////////////////////////////////// 
 
-      // Reprogram
+      // Attempt reprogram
+      /*
+      dut.io.progPort.valid.poke(true.B)
+      dut.io.progPort.bits(0).poke(99.U)
+      dut.io.progPort.bits(1).poke(77.U)
+      dut.clock.step()
+      dut.io.progPort.valid.poke(false.B)
+      */
+
+      dut.io.progPort.ready.expect(false.B)
+      dut.clock.step()
+
+
+      ////////////////////////////////////////////////// 
+      // Decrement and reattempt reprogramming
+
+      dut.io.inPorts(1).a.ready.expect(true.B)
+      dut.io.inPorts(1).a.valid.poke(true.B)
+
+      dut.io.inPorts(1).a.bits.opcode.poke(TilelinkOpcodes.ArithmeticData)
+      dut.io.inPorts(1).a.bits.param.poke(ArithmeticDataParam.SUBU)
+      dut.io.inPorts(1).a.bits.address.poke(0.U)
+      dut.io.inPorts(1).a.bits.data.poke(10.U)
+      dut.io.inPorts(1).a.bits.source.poke(0.U)
+      dut.io.inPorts(1).a.bits.size.poke(0.U)
+      dut.io.inPorts(1).a.bits.mask.poke(0.U)
+      dut.io.inPorts(1).a.bits.corrupt.poke(0.U)
+
+      dut.clock.step(2)
+
+      dut.io.inPorts(1).a.valid.poke(false.B)
+
+      dut.io.inPorts(1).d.valid.expect(true.B)
+      dut.io.inPorts(1).d.ready.poke(true.B)
+
+      dut.io.inPorts(1).d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
+      dut.io.inPorts(1).d.bits.data.expect(0.U)
+
+      ////////////////////////////////////////////////// 
+
+      // Attempt reprogram
+      /*
+      dut.io.progPort.valid.poke(true.B)
+      dut.io.progPort.bits(0).poke(99.U)
+      dut.io.progPort.bits(1).poke(77.U)
+      dut.clock.step()
+      dut.io.progPort.valid.poke(false.B)
+      */
+
+      dut.io.progPort.ready.expect(true.B)
       dut.io.progPort.valid.poke(true.B)
       dut.io.progPort.bits(0).poke(99.U)
       dut.io.progPort.bits(1).poke(77.U)

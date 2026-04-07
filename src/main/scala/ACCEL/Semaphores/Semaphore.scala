@@ -20,12 +20,14 @@ class Semaphore()(implicit c: Configuration) extends Module {
 
   val initReg = RegInit(0.U(1.W))
 
-  io.progPort.ready := true.B
+  io.progPort.ready := regs(0) === 0.U && regs(1) === 0.U // We only accept reprogramming when semaphore execution has finished 
 
+  // Should prevent hazards in asynchronous execution
   when(io.progPort.fire){
     regs(0) := io.progPort.bits(0)
     regs(1) := io.progPort.bits(1)
   }
+  
 
   val idle :: acquire :: acquireReturn :: decrement :: increment :: Nil = Enum(5)
 
