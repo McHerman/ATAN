@@ -87,12 +87,12 @@ class DMAInst(implicit c: Configuration) extends InstBaseExtended(1, 1) with Dec
 
 class SemProgInst(implicit c: Configuration) extends InstBase with Decodable {
   val semAddr = UInt(8.W)
-  val init = Vec(2, UInt(16.W))
+  val initValues = Vec(2, UInt(16.W))
 
   def layout = Seq(
     opcode  -> 0,
     semAddr -> 6,
-    init    -> 14,
+    initValues -> 14,
   )
 }
 
