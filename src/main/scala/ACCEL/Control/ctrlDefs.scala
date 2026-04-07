@@ -62,6 +62,8 @@ class LoadInst(implicit c: Configuration) extends InstBaseExtended(0, 1) with De
 }
 
 class StoreInst(implicit c: Configuration) extends InstBaseExtended(1, 0) with Decodable {
+  val mode = UInt(1.W) //Technically not needed, whole decoder is a big mess anyways 
+
   def layout = Seq(
     opcode   -> 0,
     func     -> 6,
@@ -70,7 +72,7 @@ class StoreInst(implicit c: Configuration) extends InstBaseExtended(1, 0) with D
   )
 }
 
-class DMAInst(implicit c: Configuration) extends InstBaseExtended(1, 0) with Decodable {
+class DMAInst(implicit c: Configuration) extends InstBaseExtended(1, 1) with Decodable {
   val DMAAddr = UInt(4.W)
 
   def layout = Seq(
@@ -78,7 +80,8 @@ class DMAInst(implicit c: Configuration) extends InstBaseExtended(1, 0) with Dec
     func    -> 6,
     size    -> 8,
     addrs(0) -> 16,
-    DMAAddr -> 52,
+    addrd(0) -> 52,
+    DMAAddr -> 88,
   )
 }
 

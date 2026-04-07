@@ -79,7 +79,7 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
                              sem1: Option[(Int, Int)] = None,
                              semD: Option[(Int, Int)] = None): Unit = {
     dut.io.in.response.valid.poke(true.B)
-    dut.io.in.response.bits.readData.op.poke(0.U)
+    dut.io.in.response.bits.readData.func.poke(0.U)
     dut.io.in.response.bits.readData.mode.poke(mode.U)
     dut.io.in.response.bits.readData.grainSize.poke(0.U)
     dut.io.in.response.bits.readData.size.poke(size.U)
@@ -362,15 +362,15 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       pokeInstructionWithSem(dut, mode = 0, size = n,
         addr0 = 0, addr1 = 8, addrD = 16,
-        sem0 = Some((100, n)), sem1 = Some((200, n)))
+        sem0 = Some((1, n)), sem1 = Some((2, n)))
 
       dut.clock.step()
       dut.io.in.response.valid.poke(false.B)
       dut.io.in.request.ready.poke(false.B)
 
       // ── Semaphore acquires (AQGREQ = 6) ──
-      handleSemaphoreOp(dut.clock, readSem0, expectedParam = 6, expectedAddr = Some(100))
-      handleSemaphoreOp(dut.clock, readSem1, expectedParam = 6, expectedAddr = Some(200))
+      handleSemaphoreOp(dut.clock, readSem0, expectedParam = 6, expectedAddr = Some(1))
+      handleSemaphoreOp(dut.clock, readSem1, expectedParam = 6, expectedAddr = Some(2))
 
       // ── Wait for read Gets ──
       readPort0.a.ready.poke(true.B)
@@ -396,8 +396,8 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
       sendAccessAckData(dut.clock, readPort1, inputRows, n)
 
       // ── Semaphore releases (ADDU = 7) ──
-      handleSemaphoreOp(dut.clock, readSem0, expectedParam = 7, expectedAddr = Some(100))
-      handleSemaphoreOp(dut.clock, readSem1, expectedParam = 7, expectedAddr = Some(200))
+      handleSemaphoreOp(dut.clock, readSem0, expectedParam = 7, expectedAddr = Some(1))
+      handleSemaphoreOp(dut.clock, readSem1, expectedParam = 7, expectedAddr = Some(2))
 
       // ── Wait for write PutFullData and verify ──
       writePort.a.ready.poke(true.B)
@@ -443,15 +443,15 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       pokeInstructionWithSem(dut, mode = 0, size = n,
         addr0 = 0, addr1 = 8, addrD = 16,
-        sem0 = Some((100, n)), sem1 = Some((200, n)), semD = Some((300, n)))
+        sem0 = Some((1, n)), sem1 = Some((2, n)), semD = Some((3, n)))
 
       dut.clock.step()
       dut.io.in.response.valid.poke(false.B)
       dut.io.in.request.ready.poke(false.B)
 
       // ── Read semaphore acquires ──
-      handleSemaphoreOp(dut.clock, readSem0, expectedParam = 6, expectedAddr = Some(100))
-      handleSemaphoreOp(dut.clock, readSem1, expectedParam = 6, expectedAddr = Some(200))
+      handleSemaphoreOp(dut.clock, readSem0, expectedParam = 6, expectedAddr = Some(1))
+      handleSemaphoreOp(dut.clock, readSem1, expectedParam = 6, expectedAddr = Some(2))
 
       // ── Read Gets ──
       readPort0.a.ready.poke(true.B)
@@ -472,11 +472,11 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
       sendAccessAckData(dut.clock, readPort1, inputRows, n)
 
       // ── Read semaphore releases ──
-      handleSemaphoreOp(dut.clock, readSem0, expectedParam = 7, expectedAddr = Some(100))
-      handleSemaphoreOp(dut.clock, readSem1, expectedParam = 7, expectedAddr = Some(200))
+      handleSemaphoreOp(dut.clock, readSem0, expectedParam = 7, expectedAddr = Some(1))
+      handleSemaphoreOp(dut.clock, readSem1, expectedParam = 7, expectedAddr = Some(2))
 
       // ── Write semaphore acquire ──
-      handleSemaphoreOp(dut.clock, writeSem, expectedParam = 6, expectedAddr = Some(300))
+      handleSemaphoreOp(dut.clock, writeSem, expectedParam = 6, expectedAddr = Some(3))
 
       // ── Write PutFullData ──
       writePort.a.ready.poke(true.B)
@@ -502,7 +502,7 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
       sendAccessAck(dut.clock, writePort)
 
       // ── Write semaphore release ──
-      handleSemaphoreOp(dut.clock, writeSem, expectedParam = 7, expectedAddr = Some(300))
+      handleSemaphoreOp(dut.clock, writeSem, expectedParam = 7, expectedAddr = Some(3))
     }
   }
 
@@ -528,7 +528,7 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       pokeInstructionWithSem(dut, mode = 0, size = n,
         addr0 = 0, addr1 = 8, addrD = 16,
-        sem0 = Some((100, stepSize)), sem1 = Some((200, stepSize)))
+        sem0 = Some((1, stepSize)), sem1 = Some((2, stepSize)))
 
       dut.clock.step()
       dut.io.in.response.valid.poke(false.B)
@@ -541,8 +541,8 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
         val offset = chunk * stepSize
 
         // Semaphore acquires
-        handleSemaphoreOp(dut.clock, readSem0, expectedParam = 6, expectedAddr = Some(100))
-        handleSemaphoreOp(dut.clock, readSem1, expectedParam = 6, expectedAddr = Some(200))
+        handleSemaphoreOp(dut.clock, readSem0, expectedParam = 6, expectedAddr = Some(1))
+        handleSemaphoreOp(dut.clock, readSem1, expectedParam = 6, expectedAddr = Some(2))
 
         // Wait for Gets with correct addresses
         readPort0.a.ready.poke(true.B)
@@ -570,8 +570,8 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
         sendAccessAckData(dut.clock, readPort1, chunkRows, stepSize)
 
         // Semaphore releases
-        handleSemaphoreOp(dut.clock, readSem0, expectedParam = 7, expectedAddr = Some(100))
-        handleSemaphoreOp(dut.clock, readSem1, expectedParam = 7, expectedAddr = Some(200))
+        handleSemaphoreOp(dut.clock, readSem0, expectedParam = 7, expectedAddr = Some(1))
+        handleSemaphoreOp(dut.clock, readSem1, expectedParam = 7, expectedAddr = Some(2))
       }
 
       // ── Write phase (no semaphore on destination) ──

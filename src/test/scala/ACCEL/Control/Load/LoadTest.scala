@@ -89,7 +89,7 @@ class LoadTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       // 1. Enqueue instruction (no semaphore)
       dut.io.instructionStream.valid.poke(true.B)
-      dut.io.instructionStream.bits.op.poke(0.U)
+      dut.io.instructionStream.bits.func.poke(0.U)
       dut.io.instructionStream.bits.mode.poke(0.U)
       dut.io.instructionStream.bits.size.poke(nBeats.U)
       dut.io.instructionStream.bits.addrd(0).addr.poke(destAddr.U)
@@ -157,7 +157,7 @@ class LoadTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       // 1. Enqueue instruction with semaphore enabled
       dut.io.instructionStream.valid.poke(true.B)
-      dut.io.instructionStream.bits.op.poke(0.U)
+      dut.io.instructionStream.bits.func.poke(0.U)
       dut.io.instructionStream.bits.mode.poke(0.U)
       dut.io.instructionStream.bits.size.poke(nBeats.U)
       dut.io.instructionStream.bits.addrd(0).addr.poke(destAddr.U)
