@@ -2,7 +2,7 @@ default:
     @just --list
 
 # Compile all Chisel sources
-compile:
+comp:
     mill ATAN.compile
 
 # Run all tests

@@ -76,6 +76,7 @@ class MemDMA(implicit c: MemBusConfig) extends Module {
       A.io.interface.descriptor.bits(0)   := reg(0)
       B.io.interface.descriptor.bits(0)   := reg(1)
 
+      //FIXME, should work, but is a bad idea
       when(A.io.interface.descriptor.fire && B.io.interface.descriptor.fire) {
         StateReg := 2.U
       }
