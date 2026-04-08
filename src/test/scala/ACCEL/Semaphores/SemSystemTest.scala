@@ -74,7 +74,7 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       // Enqueue: program semaphore 0 with full=20, empty=5
       dut.io.instructionStream.valid.poke(true.B)
-      dut.io.instructionStream.bits.semAddr.poke((0 * 2).U)
+      dut.io.instructionStream.bits.semAddr.poke(0.U)
       dut.io.instructionStream.bits.initValues(0).poke(20.U)
       dut.io.instructionStream.bits.initValues(1).poke(5.U)
 
@@ -113,7 +113,7 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       for ((semIdx, fullVal, emptyVal) <- programs) {
         dut.io.instructionStream.valid.poke(true.B)
-        dut.io.instructionStream.bits.semAddr.poke((semIdx * 2).U)
+        dut.io.instructionStream.bits.semAddr.poke(semIdx.U)
         dut.io.instructionStream.bits.initValues(0).poke(fullVal.U)
         dut.io.instructionStream.bits.initValues(1).poke(emptyVal.U)
 
@@ -145,7 +145,7 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
       defaultPokes(dut)
 
       dut.io.instructionStream.valid.poke(true.B)
-      dut.io.instructionStream.bits.semAddr.poke((2 * 2).U)
+      dut.io.instructionStream.bits.semAddr.poke(2.U)
       dut.io.instructionStream.bits.initValues(0).poke(3.U)
       dut.io.instructionStream.bits.initValues(1).poke(0.U)
 
@@ -156,7 +156,7 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
       }
       dut.clock.step()
 
-      dut.io.instructionStream.bits.semAddr.poke((2 * 2).U)
+      dut.io.instructionStream.bits.semAddr.poke(2.U)
       dut.io.instructionStream.bits.initValues(0).poke(99.U)
       dut.io.instructionStream.bits.initValues(1).poke(77.U)
 
@@ -207,7 +207,7 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       for ((semIdx, fullVal, emptyVal) <- programs) {
         dut.io.instructionStream.valid.poke(true.B)
-        dut.io.instructionStream.bits.semAddr.poke((semIdx * 2).U)
+        dut.io.instructionStream.bits.semAddr.poke(semIdx.U)
         dut.io.instructionStream.bits.initValues(0).poke(fullVal.U)
         dut.io.instructionStream.bits.initValues(1).poke(emptyVal.U)
 
@@ -240,7 +240,7 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       // Program semaphore 1: full=3, empty=0
       dut.io.instructionStream.valid.poke(true.B)
-      dut.io.instructionStream.bits.semAddr.poke((1 * 2).U)
+      dut.io.instructionStream.bits.semAddr.poke(1.U)
       dut.io.instructionStream.bits.initValues(0).poke(3.U)
       dut.io.instructionStream.bits.initValues(1).poke(0.U)
 

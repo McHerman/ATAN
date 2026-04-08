@@ -46,6 +46,32 @@ class ThreeTierDUT(msCfg: MemSystemConfig, bankCfg: Configuration) extends Modul
   io.semProgPort         <> semBank.io.progPort
 }
 
+class MemSystemDUT(msCfg: MemSystemConfig, bankCfg: Configuration) extends Module {
+  private val nDMAs = msCfg.tiers.length - 1 // 2
+
+  val memSys  = Module(new MemSystem(bankCfg)(msCfg))
+  val semSys = Module(new SemSystem(nDMAs * 2)(bankCfg))
+
+  // DMA[i].semaphoreA → inPort(2*i),  DMA[i].semaphoreB → inPort(2*i+1)
+  for (i <- 0 until nDMAs) {
+    semSys.io.inPorts(i * 2)     <> memSys.io.semaphoreA(i)
+    semSys.io.inPorts(i * 2 + 1) <> memSys.io.semaphoreB(i)
+  }
+
+  val io = IO(new Bundle {
+    val tier0Write          = Flipped(new TilelinkPort()(msCfg))
+    val tier0Read           = Flipped(new TilelinkPort()(msCfg))
+    val dmaInstructionStream = Flipped(Decoupled(new DMAInst()(bankCfg)))
+    val semInstructionStream = Flipped(Decoupled(new SemProgInst()(bankCfg)))
+  })
+
+  io.tier0Write          <> memSys.io.tier0WritePorts(0)
+  io.tier0Read           <> memSys.io.tier0ReadPorts(0)
+  io.dmaInstructionStream <> memSys.io.dmaInstructionStream
+  io.semInstructionStream <> semSys.io.instructionStream
+}
+
+
 class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   // ── Configuration ──────────────────────────────────────────────────────────
@@ -81,7 +107,7 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  def waitFor(dut: ThreeTierDUT)(cond: => Boolean, msg: String): Unit = {
+  def waitFor(dut: Module)(cond: => Boolean, msg: String): Unit = {
     var cycles = 0
     while (!cond) {
       require(cycles < maxCycles, s"Timeout ($maxCycles cycles) waiting for: $msg")
@@ -92,158 +118,23 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   /** Program semaphore semIdx via the SemaphoreBank progPort. */
   def programSemaphore(dut: ThreeTierDUT, semIdx: Int, full: Int, empty: Int): Unit = {
-    dut.io.semProgPort.valid.poke(true.B)
-    dut.io.semProgPort.bits.addr.poke((semIdx * 2).U) // maskedAddr = addr >> 1 = semIdx
+    dut.io.semProgPort.bits.addr.poke(semIdx.U)
     dut.io.semProgPort.bits.initValues(0).poke(full.U)
     dut.io.semProgPort.bits.initValues(1).poke(empty.U)
     dut.clock.step()
+    dut.io.semProgPort.ready.expect(true.B)
+    dut.io.semProgPort.valid.poke(true.B)
+    dut.clock.step()
     dut.io.semProgPort.valid.poke(false.B)
   }
 
-  /** Drive all DUT inputs to a safe idle state. */
-  def idlePorts(dut: ThreeTierDUT): Unit = {
-    dut.io.semProgPort.valid.poke(false.B)
-    dut.io.semProgPort.bits.addr.poke(0.U)
-    dut.io.semProgPort.bits.initValues(0).poke(0.U)
-    dut.io.semProgPort.bits.initValues(1).poke(0.U)
-
-    dut.io.dmaInstructionStream.valid.poke(false.B)
-    dut.io.dmaInstructionStream.bits.opcode.poke(0.U)
-    dut.io.dmaInstructionStream.bits.func.poke(0.U)
-    dut.io.dmaInstructionStream.bits.size.poke(0.U)
-    dut.io.dmaInstructionStream.bits.DMAAddr.poke(0.U)
-    dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(0.U)
-    dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(false.B)
-    dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(0.U)
-    dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.valid.poke(false.B)
-    dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(0.U)
-    dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
-    dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(false.B)
-    dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(0.U)
-    dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.valid.poke(false.B)
-    dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(0.U)
-
-    dut.io.tier0Write.a.valid.poke(false.B)
-    dut.io.tier0Write.a.bits.opcode.poke(0.U)
-    dut.io.tier0Write.a.bits.param.poke(0.U)
-    dut.io.tier0Write.a.bits.size.poke(0.U)
-    dut.io.tier0Write.a.bits.source.poke(0.U)
-    dut.io.tier0Write.a.bits.address.poke(0.U)
-    dut.io.tier0Write.a.bits.mask.poke(0.U)
-    dut.io.tier0Write.a.bits.data.poke(0.U)
-    dut.io.tier0Write.a.bits.corrupt.poke(0.U)
-    dut.io.tier0Write.d.ready.poke(false.B)
-
-    dut.io.tier0Read.a.valid.poke(false.B)
-    dut.io.tier0Read.a.bits.opcode.poke(0.U)
-    dut.io.tier0Read.a.bits.param.poke(0.U)
-    dut.io.tier0Read.a.bits.size.poke(0.U)
-    dut.io.tier0Read.a.bits.source.poke(0.U)
-    dut.io.tier0Read.a.bits.address.poke(0.U)
-    dut.io.tier0Read.a.bits.mask.poke(0.U)
-    dut.io.tier0Read.a.bits.data.poke(0.U)
-    dut.io.tier0Read.a.bits.corrupt.poke(0.U)
-    dut.io.tier0Read.d.ready.poke(false.B)
-  }
-
-  /** Enqueue a DMAInst into the instruction stream and wait for acceptance. */
-  def enqueueDMAInst(
-    dut: ThreeTierDUT, dmaIdx: Int,
-    srcAddr: Int, dstAddr: Int, size: Int,
-    srcSemEn: Boolean = false, srcSemAddr: Int = 0, srcSemStep: Int = 0,
-    dstSemEn: Boolean = false, dstSemAddr: Int = 0, dstSemStep: Int = 0
-  ): Unit = {
-    dut.io.dmaInstructionStream.valid.poke(true.B)
-    dut.io.dmaInstructionStream.bits.DMAAddr.poke(dmaIdx.U)
-    dut.io.dmaInstructionStream.bits.size.poke(size.U)
-    dut.io.dmaInstructionStream.bits.func.poke(0.U)
-
-    dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(srcAddr.U)
-    dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(srcSemEn.B)
-    dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(srcSemAddr.U)
-    dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(srcSemStep.U)
-
-    dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(dstAddr.U)
-    dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(dstSemEn.B)
-    dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(dstSemAddr.U)
-    dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(dstSemStep.U)
-
-    var cycles = 0
-    while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
-      dut.clock.step(); cycles += 1
-      require(cycles < maxCycles, s"Timeout enqueuing DMA instruction for DMA[$dmaIdx]")
-    }
-    dut.clock.step()
-    dut.io.dmaInstructionStream.valid.poke(false.B)
-  }
-
-  /**
-   * Write `data.length` beats to tier[0] starting at address 0 via the
-   * TilelinkWriteHandler (PutFullData burst, single AccessAck at the end).
-   */
-  def writeTier3(dut: ThreeTierDUT, data: Seq[BigInt]): Unit = {
-    val port = dut.io.tier0Write
-    port.d.ready.poke(true.B)
-
-    for ((beat, i) <- data.zipWithIndex) {
-      waitFor(dut)(port.a.ready.peek().litToBoolean, s"tier0Write.a.ready beat $i")
-      port.a.valid.poke(true.B)
-      port.a.bits.opcode.poke(TilelinkOpcodes.PutFullData)
-      port.a.bits.param.poke(0.U)
-      port.a.bits.size.poke(data.length.U)
-      port.a.bits.source.poke(0.U)
-      //port.a.bits.address.poke(i.U)  // TilelinkWriteHandler uses address of first beat
-      port.a.bits.address.poke(0.U)  // TilelinkWriteHandler uses address of first beat
-      port.a.bits.mask.poke(0xFF.U)
-      port.a.bits.data.poke(beat.U)
-      port.a.bits.corrupt.poke(0.U)
-      dut.clock.step()
-    }
-    port.a.valid.poke(false.B)
-
-    waitFor(dut)(port.d.valid.peek().litToBoolean, "tier0Write AccessAck")
-    port.d.bits.opcode.expect(TilelinkOpcodes.AccessAck)
-    dut.clock.step()
-    port.d.ready.poke(false.B)
-  }
-
-  /**
-   * Issue a single Get to tier[0] (address 0, size n) and collect all
-   * AccessAckData beats.  Returns beats in order.
-   */
-  def readTier3(dut: ThreeTierDUT, n: Int, addr: Int = 0): Seq[BigInt] = {
-    val port = dut.io.tier0Read
-
-    waitFor(dut)(port.a.ready.peek().litToBoolean, "tier0Read.a.ready")
-    port.a.valid.poke(true.B)
-    port.a.bits.opcode.poke(TilelinkOpcodes.Get)
-    port.a.bits.param.poke(0.U)
-    port.a.bits.size.poke(n.U)
-    port.a.bits.source.poke(0.U)
-    port.a.bits.address.poke(addr.U)
-    port.a.bits.mask.poke(0xFF.U)
-    port.a.bits.data.poke(0.U)
-    port.a.bits.corrupt.poke(0.U)
-    dut.clock.step()
-    port.a.valid.poke(false.B)
-
-    port.d.ready.poke(true.B)
-    val buf = collection.mutable.ArrayBuffer[BigInt]()
-    while (buf.length < n) {
-      waitFor(dut)(port.d.valid.peek().litToBoolean, s"tier0Read D beat ${buf.length}")
-      buf += port.d.bits.data.peek().litValue
-      dut.clock.step()
-    }
-    port.d.ready.poke(false.B)
-    buf.toSeq
-  }
 
   // ── Test ───────────────────────────────────────────────────────────────────
 
   "Three-tier MemSystem: DMA chain with semaphore-synchronized transfers" in {
     simulate(new ThreeTierDUT(msCfg, bankCfg)) { dut =>
 
-      idlePorts(dut)
+      //idlePorts(dut)
       dut.clock.step(2)
 
       val testData = Seq[BigInt](
@@ -362,6 +253,476 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       // state (producer acquires emptyReg, consumer blocks on fullReg).
       // ═══════════════════════════════════════════════════════════════════════
 
+      programSemaphore(dut, semIdx = 1, full = 0, empty = N)
+
+
+      // DMA[1]: read from t2 addr 0, write to t1 addr N 
+      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = N,
+      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = N)
+
+      dut.io.dmaInstructionStream.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.DMAAddr.poke(1.U)
+      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.func.poke(1.U) 
+      // We reverse the directionality of the write, data flows from rd to rs
+      // B to A  
+
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(SEM_1_P.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+
+      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(false.B)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(4.U)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+
+      cycles = 0
+      while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
+        dut.clock.step(); cycles += 1
+        require(cycles < maxCycles, s"Timeout enqueuing DMA instruction for DMA[1]")
+      }
+      dut.clock.step()
+      dut.io.dmaInstructionStream.valid.poke(false.B)
+
+
+
+      // Enqueue both DMA instructions through the command queue
+      // DMA[0]: read from t3 addr 0, write to t2 addr 0, no semaphores
+      //enqueueDMAInst(dut, dmaIdx = 0, srcAddr = 0, dstAddr = 0, size = N)
+
+      dut.io.dmaInstructionStream.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.DMAAddr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.func.poke(1.U)
+
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(false.B)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(0.U)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+
+      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(SEM_1_C.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+
+      cycles = 0
+      while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
+        dut.clock.step(); cycles += 1
+        require(cycles < maxCycles, s"Timeout enqueuing DMA instruction for DMA[0]")
+      }
+      dut.clock.step()
+      dut.io.dmaInstructionStream.valid.poke(false.B)
+
+      // Wait for DMA[0] and DMA[1] to complete
+      dut.clock.step(200)
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // Phase 4 – Verify: read tier 3 at address 0 to check data survived
+      // the downward trip (t3 was not overwritten, data should still be there)
+      // ═══════════════════════════════════════════════════════════════════════
+      //val readback = readTier3(dut, N, addr = 0)
+
+      val readport = dut.io.tier0Read
+
+      waitFor(dut)(readport.a.ready.peek().litToBoolean, "tier0Read.a.ready")
+      readport.a.valid.poke(true.B)
+      readport.a.bits.opcode.poke(TilelinkOpcodes.Get)
+      readport.a.bits.param.poke(0.U)
+      readport.a.bits.size.poke(N.U)
+      readport.a.bits.source.poke(0.U)
+      readport.a.bits.address.poke(N.U)
+      readport.a.bits.mask.poke(0xFF.U)
+      readport.a.bits.data.poke(0.U)
+      readport.a.bits.corrupt.poke(0.U)
+      dut.clock.step()
+      readport.a.valid.poke(false.B)
+
+      readport.d.ready.poke(true.B)
+      val buf = collection.mutable.ArrayBuffer[BigInt]()
+      while (buf.length < N) {
+        waitFor(dut)(readport.d.valid.peek().litToBoolean, s"tier0Read D beat ${buf.length}")
+        buf += readport.d.bits.data.peek().litValue
+        dut.clock.step()
+      }
+      readport.d.ready.poke(false.B)
+      val readback = buf.toSeq
+
+
+
+      assert(
+        readback == testData,
+        s"Verification mismatch:\n" +
+        s"  expected: ${testData.map(x => f"0x$x%016x")}\n" +
+        s"  got:      ${readback.map(x => f"0x$x%016x")}"
+      )
+    }
+  }
+
+  "Three-tier MemSystem: DMA chain with semaphore-synchronized transfers and different order" in {
+    simulate(new ThreeTierDUT(msCfg, bankCfg)) { dut =>
+
+      //idlePorts(dut)
+      dut.clock.step(2)
+
+      val testData = Seq[BigInt](
+        BigInt("0102030405060708", 16),
+        BigInt("090A0B0C0D0E0F10", 16),
+        BigInt("1112131415161718", 16),
+        BigInt("191A1B1C1D1E1F20", 16)
+      )
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // Phase 1 – Write test data to tier 0 (tier[0]) via external write port
+      // ═══════════════════════════════════════════════════════════════════════
+
+      val port = dut.io.tier0Write
+      port.d.ready.poke(true.B)
+
+      for ((beat, i) <- testData.zipWithIndex) {
+        waitFor(dut)(port.a.ready.peek().litToBoolean, s"tier0Write.a.ready beat $i")
+        port.a.valid.poke(true.B)
+        port.a.bits.opcode.poke(TilelinkOpcodes.PutFullData)
+        port.a.bits.param.poke(0.U)
+        port.a.bits.size.poke(testData.length.U)
+        port.a.bits.source.poke(0.U)
+        //port.a.bits.address.poke(i.U)  // TilelinkWriteHandler uses address of first beat
+        port.a.bits.address.poke(0.U)  // TilelinkWriteHandler uses address of first beat
+        port.a.bits.mask.poke(0xFF.U)
+        port.a.bits.data.poke(beat.U)
+        port.a.bits.corrupt.poke(0.U)
+        dut.clock.step()
+      }
+      port.a.valid.poke(false.B)
+
+      waitFor(dut)(port.d.valid.peek().litToBoolean, "tier0Write AccessAck")
+      port.d.bits.opcode.expect(TilelinkOpcodes.AccessAck)
+      dut.clock.step()
+      port.d.ready.poke(false.B)
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // Phase 2 – Downward: t3→t2 (DMA[0]) and t2→t1 (DMA[1]) in sequence
+      //
+      // DMA[0] (producer): A reads t0 - no semaphore, B writes t1 - producer semaphore 
+      // DMA[1] (consumer): A reads t1 - consumer semaphore (blocked), B writes t2
+      //
+      // Consumer DMA[1].A blocks on semaphore 0 (inPort 0, TL addr 4) fullReg=0.
+      // After producer DMA[0] completes, test programs sem to unblock prod and consumer.
+      // ═══════════════════════════════════════════════════════════════════════
+
+      // Init semaphore 0: fullReg=0 (consumer blocks), emptyReg=N (producer can start)
+      programSemaphore(dut, semIdx = 0, full = 0, empty = N)
+
+
+      // DMA[1]: read from t1 addr 0 (with sem), write to t2 addr 0
+      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = N,
+      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = N)
+
+      dut.io.dmaInstructionStream.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.DMAAddr.poke(1.U)
+      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.func.poke(0.U)
+
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(SEM_0_C.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+
+      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(false.B)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(4.U)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+
+      var cycles = 0
+      while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
+        dut.clock.step(); cycles += 1
+        require(cycles < maxCycles, s"Timeout enqueuing DMA instruction for DMA[1]")
+      }
+      dut.clock.step()
+      dut.io.dmaInstructionStream.valid.poke(false.B)
+
+      // Enqueue both DMA instructions through the command queue
+      // DMA[0]: read from t0 addr 0, write to t1 addr 0, prod semaphore 
+      //enqueueDMAInst(dut, dmaIdx = 0, srcAddr = 0, dstAddr = 0, size = N)
+
+      dut.io.dmaInstructionStream.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.DMAAddr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.func.poke(0.U)
+
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(false.B)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(0.U)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+
+      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(SEM_0_P.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+
+      cycles = 0
+      while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
+        dut.clock.step(); cycles += 1
+        require(cycles < maxCycles, s"Timeout enqueuing DMA instruction for DMA[0]")
+      }
+      dut.clock.step()
+      dut.io.dmaInstructionStream.valid.poke(false.B)
+
+      // Wait for DMA[0] and DMA[1] to complete
+      dut.clock.step(200)
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // Phase 3 – Upward: t2→t1 (DMA[1]) and t1→t0(DMA[0]) in sequence
+      //
+      // DMA[1] (producer): A writes t1, B reads t2 — prod semaphore
+      // DMA[0] (consumer): A writes t0, B reads t1 — cons semaphore
+      //
+      // After Phase 2: fullReg=0, emptyReg=N — naturally the right initial
+      // state (producer acquires emptyReg, consumer blocks on fullReg).
+      // ═══════════════════════════════════════════════════════════════════════
+
+      // Enqueue both DMA instructions through the command queue
+      // DMA[0]: read from t3 addr 0, write to t2 addr 0, no semaphores
+      //enqueueDMAInst(dut, dmaIdx = 0, srcAddr = 0, dstAddr = 0, size = N)
+
+
+      programSemaphore(dut, semIdx = 1, full = 0, empty = N)
+
+      dut.io.dmaInstructionStream.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.DMAAddr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.func.poke(1.U)
+
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(false.B)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(0.U)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+
+      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(SEM_1_C.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+
+      cycles = 0
+      while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
+        dut.clock.step(); cycles += 1
+        require(cycles < maxCycles, s"Timeout enqueuing DMA instruction for DMA[0]")
+      }
+      dut.clock.step()
+      dut.io.dmaInstructionStream.valid.poke(false.B)
+
+      // DMA[1]: read from t2 addr 0, write to t1 addr N 
+      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = N,
+      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = N)
+
+      dut.io.dmaInstructionStream.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.DMAAddr.poke(1.U)
+      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.func.poke(1.U) 
+      // We reverse the directionality of the write, data flows from rd to rs
+      // B to A  
+
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(SEM_1_P.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+
+      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(false.B)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(4.U)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+
+      cycles = 0
+      while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
+        dut.clock.step(); cycles += 1
+        require(cycles < maxCycles, s"Timeout enqueuing DMA instruction for DMA[1]")
+      }
+      dut.clock.step()
+      dut.io.dmaInstructionStream.valid.poke(false.B)
+
+      // Wait for DMA[0] and DMA[1] to complete
+      dut.clock.step(200)
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // Phase 4 – Verify: read tier 3 at address 0 to check data survived
+      // the downward trip (t3 was not overwritten, data should still be there)
+      // ═══════════════════════════════════════════════════════════════════════
+      //val readback = readTier3(dut, N, addr = 0)
+
+      val readport = dut.io.tier0Read
+
+      waitFor(dut)(readport.a.ready.peek().litToBoolean, "tier0Read.a.ready")
+      readport.a.valid.poke(true.B)
+      readport.a.bits.opcode.poke(TilelinkOpcodes.Get)
+      readport.a.bits.param.poke(0.U)
+      readport.a.bits.size.poke(N.U)
+      readport.a.bits.source.poke(0.U)
+      readport.a.bits.address.poke(N.U)
+      readport.a.bits.mask.poke(0xFF.U)
+      readport.a.bits.data.poke(0.U)
+      readport.a.bits.corrupt.poke(0.U)
+      dut.clock.step()
+      readport.a.valid.poke(false.B)
+
+      readport.d.ready.poke(true.B)
+      val buf = collection.mutable.ArrayBuffer[BigInt]()
+      while (buf.length < N) {
+        waitFor(dut)(readport.d.valid.peek().litToBoolean, s"tier0Read D beat ${buf.length}")
+        buf += readport.d.bits.data.peek().litValue
+        dut.clock.step()
+      }
+      readport.d.ready.poke(false.B)
+      val readback = buf.toSeq
+
+
+
+      assert(
+        readback == testData,
+        s"Verification mismatch:\n" +
+        s"  expected: ${testData.map(x => f"0x$x%016x")}\n" +
+        s"  got:      ${readback.map(x => f"0x$x%016x")}"
+      )
+    }
+  }
+
+  "Three-tier MemSystem: DMA chain with semsystem and single sem" in {
+    simulate(new MemSystemDUT(msCfg, bankCfg)) { dut =>
+
+      //idlePorts(dut)
+      //dut.clock.step(2)
+
+      val testData = Seq[BigInt](
+        BigInt("0102030405060708", 16),
+        BigInt("090A0B0C0D0E0F10", 16),
+        BigInt("1112131415161718", 16),
+        BigInt("191A1B1C1D1E1F20", 16)
+      )
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // Phase 1 – Write test data to tier 0 (tier[0]) via external write port
+      // ═══════════════════════════════════════════════════════════════════════
+
+      val port = dut.io.tier0Write
+      port.d.ready.poke(true.B)
+
+      dut.io.semInstructionStream.ready.expect(true.B)
+      dut.io.semInstructionStream.valid.poke(true.B)
+      dut.io.semInstructionStream.bits.semAddr.poke(0.U)
+      dut.io.semInstructionStream.bits.initValues(0).poke(0.U)
+      dut.io.semInstructionStream.bits.initValues(1).poke(N.U)
+
+      dut.clock.step()
+
+      dut.io.semInstructionStream.ready.expect(true.B)
+      dut.io.semInstructionStream.valid.poke(true.B)
+      dut.io.semInstructionStream.bits.semAddr.poke(0.U)
+      dut.io.semInstructionStream.bits.initValues(0).poke(0.U)
+      dut.io.semInstructionStream.bits.initValues(1).poke(N.U)
+
+      dut.clock.step()
+
+      dut.io.semInstructionStream.valid.poke(false.B)
+
+
+      for ((beat, i) <- testData.zipWithIndex) {
+        waitFor(dut)(port.a.ready.peek().litToBoolean, s"tier0Write.a.ready beat $i")
+        port.a.valid.poke(true.B)
+        port.a.bits.opcode.poke(TilelinkOpcodes.PutFullData)
+        port.a.bits.param.poke(0.U)
+        port.a.bits.size.poke(testData.length.U)
+        port.a.bits.source.poke(0.U)
+        //port.a.bits.address.poke(i.U)  // TilelinkWriteHandler uses address of first beat
+        port.a.bits.address.poke(0.U)  // TilelinkWriteHandler uses address of first beat
+        port.a.bits.mask.poke(0xFF.U)
+        port.a.bits.data.poke(beat.U)
+        port.a.bits.corrupt.poke(0.U)
+        dut.clock.step()
+      }
+      port.a.valid.poke(false.B)
+
+      waitFor(dut)(port.d.valid.peek().litToBoolean, "tier0Write AccessAck")
+      port.d.bits.opcode.expect(TilelinkOpcodes.AccessAck)
+      dut.clock.step()
+      port.d.ready.poke(false.B)
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // Phase 2 – Downward: t3→t2 (DMA[0]) and t2→t1 (DMA[1]) in sequence
+      //
+      // DMA[0] (producer): A reads t0 - no semaphore, B writes t1 - producer semaphore 
+      // DMA[1] (consumer): A reads t1 - consumer semaphore (blocked), B writes t2
+      //
+      // Consumer DMA[1].A blocks on semaphore 0 (inPort 0, TL addr 4) fullReg=0.
+      // After producer DMA[0] completes, test programs sem to unblock prod and consumer.
+      // ═══════════════════════════════════════════════════════════════════════
+
+      // Enqueue both DMA instructions through the command queue
+      // DMA[0]: read from t0 addr 0, write to t1 addr 0, prod semaphore 
+      //enqueueDMAInst(dut, dmaIdx = 0, srcAddr = 0, dstAddr = 0, size = N)
+
+      dut.io.dmaInstructionStream.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.DMAAddr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.func.poke(0.U)
+
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(false.B)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(0.U)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+
+      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(SEM_0_P.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+
+      var cycles = 0
+      while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
+        dut.clock.step(); cycles += 1
+        require(cycles < maxCycles, s"Timeout enqueuing DMA instruction for DMA[0]")
+      }
+      dut.clock.step()
+      dut.io.dmaInstructionStream.valid.poke(false.B)
+
+
+      // DMA[1]: read from t1 addr 0 (with sem), write to t2 addr 0
+      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = N,
+      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = N)
+
+      dut.io.dmaInstructionStream.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.DMAAddr.poke(1.U)
+      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.func.poke(0.U)
+
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(SEM_0_C.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+
+      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(false.B)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(4.U)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+
+      cycles = 0
+      while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
+        dut.clock.step(); cycles += 1
+        require(cycles < maxCycles, s"Timeout enqueuing DMA instruction for DMA[1]")
+      }
+      dut.clock.step()
+      dut.io.dmaInstructionStream.valid.poke(false.B)
+
+      // Wait for DMA[0] and DMA[1] to complete
+      dut.clock.step(200)
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // Phase 3 – Upward: t2→t1 (DMA[1]) and t1→t0(DMA[0]) in sequence
+      //
+      // DMA[1] (producer): A writes t1, B reads t2 — prod semaphore
+      // DMA[0] (consumer): A writes t0, B reads t1 — cons semaphore
+      //
+      // After Phase 2: fullReg=0, emptyReg=N — naturally the right initial
+      // state (producer acquires emptyReg, consumer blocks on fullReg).
+      // ═══════════════════════════════════════════════════════════════════════
+
 
       // DMA[1]: read from t2 addr 0, write to t1 addr N 
       //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = N,
@@ -411,6 +772,248 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(N.U)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(SEM_0_C.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+
+      cycles = 0
+      while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
+        dut.clock.step(); cycles += 1
+        require(cycles < maxCycles, s"Timeout enqueuing DMA instruction for DMA[0]")
+      }
+      dut.clock.step()
+      dut.io.dmaInstructionStream.valid.poke(false.B)
+
+      // Wait for DMA[0] and DMA[1] to complete
+      dut.clock.step(200)
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // Phase 4 – Verify: read tier 3 at address 0 to check data survived
+      // the downward trip (t3 was not overwritten, data should still be there)
+      // ═══════════════════════════════════════════════════════════════════════
+      //val readback = readTier3(dut, N, addr = 0)
+
+      val readport = dut.io.tier0Read
+
+      waitFor(dut)(readport.a.ready.peek().litToBoolean, "tier0Read.a.ready")
+      readport.a.valid.poke(true.B)
+      readport.a.bits.opcode.poke(TilelinkOpcodes.Get)
+      readport.a.bits.param.poke(0.U)
+      readport.a.bits.size.poke(N.U)
+      readport.a.bits.source.poke(0.U)
+      readport.a.bits.address.poke(N.U)
+      readport.a.bits.mask.poke(0xFF.U)
+      readport.a.bits.data.poke(0.U)
+      readport.a.bits.corrupt.poke(0.U)
+      dut.clock.step()
+      readport.a.valid.poke(false.B)
+
+      readport.d.ready.poke(true.B)
+      val buf = collection.mutable.ArrayBuffer[BigInt]()
+      while (buf.length < N) {
+        waitFor(dut)(readport.d.valid.peek().litToBoolean, s"tier0Read D beat ${buf.length}")
+        buf += readport.d.bits.data.peek().litValue
+        dut.clock.step()
+      }
+      readport.d.ready.poke(false.B)
+      val readback = buf.toSeq
+
+
+
+      assert(
+        readback == testData,
+        s"Verification mismatch:\n" +
+        s"  expected: ${testData.map(x => f"0x$x%016x")}\n" +
+        s"  got:      ${readback.map(x => f"0x$x%016x")}"
+      )
+    }
+  }
+
+  "Three-tier MemSystem: DMA chain with semsystem and dual sem" in {
+    simulate(new MemSystemDUT(msCfg, bankCfg)) { dut =>
+
+      //idlePorts(dut)
+      //dut.clock.step(2)
+
+      val testData = Seq[BigInt](
+        BigInt("0102030405060708", 16),
+        BigInt("090A0B0C0D0E0F10", 16),
+        BigInt("1112131415161718", 16),
+        BigInt("191A1B1C1D1E1F20", 16)
+      )
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // Phase 1 – Write test data to tier 0 (tier[0]) via external write port
+      // ═══════════════════════════════════════════════════════════════════════
+
+      val port = dut.io.tier0Write
+      port.d.ready.poke(true.B)
+
+      dut.io.semInstructionStream.ready.expect(true.B)
+      dut.io.semInstructionStream.valid.poke(true.B)
+      dut.io.semInstructionStream.bits.semAddr.poke(0.U)
+      dut.io.semInstructionStream.bits.initValues(0).poke(0.U)
+      dut.io.semInstructionStream.bits.initValues(1).poke(N.U)
+
+      dut.clock.step()
+
+      dut.io.semInstructionStream.ready.expect(true.B)
+      dut.io.semInstructionStream.valid.poke(true.B)
+      dut.io.semInstructionStream.bits.semAddr.poke(1.U)
+      dut.io.semInstructionStream.bits.initValues(0).poke(0.U)
+      dut.io.semInstructionStream.bits.initValues(1).poke(N.U)
+
+      dut.clock.step()
+
+      dut.io.semInstructionStream.valid.poke(false.B)
+
+
+      for ((beat, i) <- testData.zipWithIndex) {
+        waitFor(dut)(port.a.ready.peek().litToBoolean, s"tier0Write.a.ready beat $i")
+        port.a.valid.poke(true.B)
+        port.a.bits.opcode.poke(TilelinkOpcodes.PutFullData)
+        port.a.bits.param.poke(0.U)
+        port.a.bits.size.poke(testData.length.U)
+        port.a.bits.source.poke(0.U)
+        //port.a.bits.address.poke(i.U)  // TilelinkWriteHandler uses address of first beat
+        port.a.bits.address.poke(0.U)  // TilelinkWriteHandler uses address of first beat
+        port.a.bits.mask.poke(0xFF.U)
+        port.a.bits.data.poke(beat.U)
+        port.a.bits.corrupt.poke(0.U)
+        dut.clock.step()
+      }
+      port.a.valid.poke(false.B)
+
+      waitFor(dut)(port.d.valid.peek().litToBoolean, "tier0Write AccessAck")
+      port.d.bits.opcode.expect(TilelinkOpcodes.AccessAck)
+      dut.clock.step()
+      port.d.ready.poke(false.B)
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // Phase 2 – Downward: t3→t2 (DMA[0]) and t2→t1 (DMA[1]) in sequence
+      //
+      // DMA[0] (producer): A reads t0 - no semaphore, B writes t1 - producer semaphore 
+      // DMA[1] (consumer): A reads t1 - consumer semaphore (blocked), B writes t2
+      //
+      // Consumer DMA[1].A blocks on semaphore 0 (inPort 0, TL addr 4) fullReg=0.
+      // After producer DMA[0] completes, test programs sem to unblock prod and consumer.
+      // ═══════════════════════════════════════════════════════════════════════
+
+      // Enqueue both DMA instructions through the command queue
+      // DMA[0]: read from t0 addr 0, write to t1 addr 0, prod semaphore 
+      //enqueueDMAInst(dut, dmaIdx = 0, srcAddr = 0, dstAddr = 0, size = N)
+
+      dut.io.dmaInstructionStream.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.DMAAddr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.func.poke(0.U)
+
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(false.B)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(0.U)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+
+      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(SEM_0_P.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+
+      var cycles = 0
+      while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
+        dut.clock.step(); cycles += 1
+        require(cycles < maxCycles, s"Timeout enqueuing DMA instruction for DMA[0]")
+      }
+      dut.clock.step()
+      dut.io.dmaInstructionStream.valid.poke(false.B)
+
+
+      // DMA[1]: read from t1 addr 0 (with sem), write to t2 addr 0
+      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = N,
+      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = N)
+
+      dut.io.dmaInstructionStream.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.DMAAddr.poke(1.U)
+      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.func.poke(0.U)
+
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(SEM_0_C.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+
+      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(false.B)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(4.U)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+
+      cycles = 0
+      while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
+        dut.clock.step(); cycles += 1
+        require(cycles < maxCycles, s"Timeout enqueuing DMA instruction for DMA[1]")
+      }
+      dut.clock.step()
+      dut.io.dmaInstructionStream.valid.poke(false.B)
+
+      // Wait for DMA[0] and DMA[1] to complete
+      dut.clock.step(200)
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // Phase 3 – Upward: t2→t1 (DMA[1]) and t1→t0(DMA[0]) in sequence
+      //
+      // DMA[1] (producer): A writes t1, B reads t2 — prod semaphore
+      // DMA[0] (consumer): A writes t0, B reads t1 — cons semaphore
+      //
+      // After Phase 2: fullReg=0, emptyReg=N — naturally the right initial
+      // state (producer acquires emptyReg, consumer blocks on fullReg).
+      // ═══════════════════════════════════════════════════════════════════════
+
+
+      // DMA[1]: read from t2 addr 0, write to t1 addr N 
+      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = N,
+      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = N)
+
+      dut.io.dmaInstructionStream.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.DMAAddr.poke(1.U)
+      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.func.poke(1.U) 
+      // We reverse the directionality of the write, data flows from rd to rs
+      // B to A  
+
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(SEM_1_P.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+
+      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(false.B)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(4.U)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+
+      cycles = 0
+      while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
+        dut.clock.step(); cycles += 1
+        require(cycles < maxCycles, s"Timeout enqueuing DMA instruction for DMA[1]")
+      }
+      dut.clock.step()
+      dut.io.dmaInstructionStream.valid.poke(false.B)
+
+
+
+      // Enqueue both DMA instructions through the command queue
+      // DMA[0]: read from t3 addr 0, write to t2 addr 0, no semaphores
+      //enqueueDMAInst(dut, dmaIdx = 0, srcAddr = 0, dstAddr = 0, size = N)
+
+      dut.io.dmaInstructionStream.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.DMAAddr.poke(0.U)
+      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.func.poke(1.U)
+
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(false.B)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(0.U)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+
+      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(true.B)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(SEM_1_C.U)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
 
       cycles = 0

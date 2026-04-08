@@ -18,14 +18,12 @@ class SemaphoreBank(noPorts: Int)(implicit c: Configuration) extends Module {
 
   val semaphores = VecInit(Seq.fill(noSemaphores)(Module(new Semaphore()).io))
 
-  val maskedAddr = io.progPort.bits.addr >> 1
-
   semaphores.zipWithIndex.foreach { case (sem, i) =>
-    sem.progPort.valid := io.progPort.valid && (maskedAddr === i.U)
+    sem.progPort.valid := io.progPort.valid && (io.progPort.bits.addr === i.U)
     sem.progPort.bits  := io.progPort.bits.initValues
   }
 
-  io.progPort.ready := semaphores(maskedAddr).progPort.ready
+  io.progPort.ready := semaphores(io.progPort.bits.addr).progPort.ready
 
 
   // Each semaphore has 2 independently addressed ports that alias the same physical registers.

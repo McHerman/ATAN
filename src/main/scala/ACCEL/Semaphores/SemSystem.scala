@@ -26,7 +26,7 @@ class SemSystem(noPorts: Int)(implicit c: Configuration) extends Module {
 
   // State machine for writing into semaphore system
   // ── States ───────────────────────────────────────────────────────────────
-  val idle :: fetch :: write :: Nil = Enum(3) 
+  val idle :: fetch :: writeDelay :: write :: Nil = Enum(4)
 
   val StateReg = RegInit(idle)
 
@@ -40,12 +40,19 @@ class SemSystem(noPorts: Int)(implicit c: Configuration) extends Module {
 
         instReg := queue.io.ReadData.response.bits.readData
 
-        StateReg := write
+        StateReg := writeDelay
       }
+    }
+    is(writeDelay) {
+      SemaphoreBank.io.progPort.bits.addr := instReg.semAddr
+      SemaphoreBank.io.progPort.bits.initValues := instReg.initValues
+
+      StateReg := write
     }
     is(write) {
       SemaphoreBank.io.progPort.bits.addr := instReg.semAddr
       SemaphoreBank.io.progPort.bits.initValues := instReg.initValues
+
       SemaphoreBank.io.progPort.valid := true.B
 
       when(SemaphoreBank.io.progPort.fire){
