@@ -130,7 +130,7 @@ class SysArrayTest extends AnyFreeSpec with Matchers with ChiselSim {
 
 
         for(k <- 0 until 8){
-          dut.io.writePort(0)(0).bits(k).poke(matrix(i)(k).U(8.W))
+          dut.io.writePort(0)(0).bits(k).poke(matrix(k)(i).U(8.W))
         }
 
         dut.clock.step()
