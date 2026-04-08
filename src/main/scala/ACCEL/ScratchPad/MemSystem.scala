@@ -3,7 +3,7 @@ package ATA8
 import chisel3._
 import chisel3.util._
 
-class MemSystem(implicit mc: MemSystemConfig) extends Module {
+class MemSystem(ctrlCfg: Configuration)(implicit mc: MemSystemConfig) extends Module {
 
   private val nTiers = mc.tiers.length
   private val nDMAs  = nTiers - 1
@@ -19,10 +19,10 @@ class MemSystem(implicit mc: MemSystemConfig) extends Module {
     else 2
 
   val io = IO(new Bundle {
-    val tier3WritePorts = Vec(mc.tiers(0).nWritePorts, Flipped(new TilelinkPort))
-    val tier3ReadPorts  = Vec(mc.tiers(0).nReadPorts,  Flipped(new TilelinkPort))
+    val tier0WritePorts = Vec(mc.tiers(0).nWritePorts, Flipped(new TilelinkPort))
+    val tier0ReadPorts  = Vec(mc.tiers(0).nReadPorts,  Flipped(new TilelinkPort))
 
-    val dmaInterfaces = Vec(nDMAs, Flipped(new dmaInterface(2)))
+    val dmaInstructionStream = Flipped(Decoupled(new DMAInst()(ctrlCfg)))
 
     val semaphoreA = Vec(nDMAs, new TilelinkPort)
     val semaphoreB = Vec(nDMAs, new TilelinkPort)
@@ -34,11 +34,14 @@ class MemSystem(implicit mc: MemSystemConfig) extends Module {
   }
 
   // ── Instantiate DMAs (one per adjacent tier pair) ─────────────────────────
-  val dmas = Seq.fill(nDMAs)(Module(new MemDMA))
+  val dmas     = Seq.fill(nDMAs)(Module(new MemDMA))
+  val dmaQueue = Module(new DMAQueue(nDMAs)(ctrlCfg))
+
+  dmaQueue.io.instructionStream <> io.dmaInstructionStream
 
   // ── Wire tier-0 external ports ────────────────────────────────────────────
-  tiers(0).io.writePorts <> io.tier3WritePorts
-  tiers(0).io.readPorts  <> io.tier3ReadPorts
+  tiers(0).io.writePorts <> io.tier0WritePorts
+  tiers(0).io.readPorts  <> io.tier0ReadPorts
 
   // ── Terminate external ports on non-tier-0 tiers ─────────────────────────
   // Only tier 0 has external access; tiers 1..N-1 have no software-visible
@@ -63,7 +66,7 @@ class MemSystem(implicit mc: MemSystemConfig) extends Module {
   //             tier[i].dmaPorts(1)          for i > 0  (slot 0 is taken by the previous DMA's portB)
   //   portB  →  tier[i+1].dmaPorts(0)        always (first DMA slot of the lower tier)
   for (i <- 0 until nDMAs) {
-    dmas(i).io.interface  <> io.dmaInterfaces(i)
+    dmaQueue.io.dmaInterfaces(i) <> dmas(i).io.interface
     dmas(i).io.semaphoreA <> io.semaphoreA(i)
     dmas(i).io.semaphoreB <> io.semaphoreB(i)
 
