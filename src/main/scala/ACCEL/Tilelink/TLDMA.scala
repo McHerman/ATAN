@@ -42,7 +42,7 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
   io.dataOut.foreach { d => d.valid := false.B; d.bits := DontCare }
 
   // ── States ───────────────────────────────────────────────────────────────
-  val idle :: writeFirst :: writeRest :: writeAck :: writeRespond :: readIssue :: readData :: readRespond :: semAcquire :: semRelease :: Nil = Enum(10)
+  val idle :: writeFirst :: writeRest :: writeAck :: writeRespond :: readIssue :: readData :: readRespond :: semAcquire :: semDecrement :: semRelease :: Nil = Enum(11)
 
   // ── Registers ─────────────────────────────────────────────────────────────
   val StateReg      = RegInit(idle)
@@ -56,17 +56,6 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
   val remaining = if (config.semaphore) Some(RegInit(0.U(24.W))) else None
 
 
-  def semOp(param: UInt): Unit = io.semaphoreIF.foreach { sem =>
-    sem.a.valid        := true.B
-    sem.a.bits.opcode  := TilelinkOpcodes.ArithmeticData
-    sem.a.bits.param   := param
-    sem.a.bits.size    := 1.U
-    sem.a.bits.source  := 0.U
-    sem.a.bits.address := reg.semaphore.get.semAddr
-    sem.a.bits.data    := reg.semaphore.get.semStepSize
-    sem.a.bits.mask    := Fill(c.dataBusSize, 1.U(1.W))
-    sem.a.bits.corrupt := 0.U
-  }
 
   switch(StateReg) {
     is(idle) {
@@ -238,18 +227,62 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
   }
 
   // ── Semaphore states ────────────────────────────────────────────────────
+  // The semaphore address is treated as a base:
+  //   base + 0 = fullReg,  base + 1 = emptyReg
+  //
+  // Direction is derived from writeEn (or statically from config):
+  //   writer = producer: acquire/SUBU on emptyReg (base+1), release/ADDU on fullReg (base+0)
+  //   reader = consumer: acquire/SUBU on fullReg  (base+0), release/ADDU on emptyReg (base+1)
+  //
+  // Flow: semAcquire(AQGREQ) → semDecrement(SUBU) → read/write → semRelease(ADDU)
   if (config.semaphore) {
-    val sem   = io.semaphoreIF.get
-
-    //val remaining = RegInit(0.U(24.W))
-    //val remainding = remainding.get
+    val sem = io.semaphoreIF.get
     val semAFired = RegInit(false.B)
+
+    val isProducer = (config.read, config.write) match {
+      case (true, true) => isWrite.get
+      case (_, true)    => true.B   // write-only → always producer
+      case _            => false.B  // read-only  → always consumer
+    }
+    val semAcquireAddr = reg.semaphore.get.semAddr + isProducer.asUInt
+    val semReleaseAddr = reg.semaphore.get.semAddr + (!isProducer).asUInt
 
     switch(StateReg) {
       // SemAcquire – AQGREQ, stall until semaphore condition is met
       is(semAcquire) {
         when(!semAFired) {
-          semOp(ArithmeticDataParam.AQGREQ)
+          sem.a.valid        := true.B
+          sem.a.bits.opcode  := TilelinkOpcodes.ArithmeticData
+          sem.a.bits.param   := ArithmeticDataParam.AQGREQ
+          sem.a.bits.size    := 1.U
+          sem.a.bits.source  := 0.U
+          sem.a.bits.address := semAcquireAddr
+          sem.a.bits.data    := reg.semaphore.get.semStepSize
+          sem.a.bits.mask    := Fill(c.dataBusSize, 1.U(1.W))
+          sem.a.bits.corrupt := 0.U
+          when(sem.a.fire) { semAFired := true.B }
+        }
+
+        sem.d.ready := semAFired
+
+        when(sem.d.fire) {
+          semAFired := false.B
+          StateReg  := semDecrement
+        }
+      }
+
+      // SemDecrement – SUBU on the acquire register to consume the token
+      is(semDecrement) {
+        when(!semAFired) {
+          sem.a.valid        := true.B
+          sem.a.bits.opcode  := TilelinkOpcodes.ArithmeticData
+          sem.a.bits.param   := ArithmeticDataParam.SUBU
+          sem.a.bits.size    := 1.U
+          sem.a.bits.source  := 0.U
+          sem.a.bits.address := semAcquireAddr
+          sem.a.bits.data    := reg.semaphore.get.semStepSize
+          sem.a.bits.mask    := Fill(c.dataBusSize, 1.U(1.W))
+          sem.a.bits.corrupt := 0.U
           when(sem.a.fire) { semAFired := true.B }
         }
 
@@ -265,11 +298,18 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
         }
       }
 
-      // SemRelease – ADDU, decrement remaining, loop or finish
+      // SemRelease – ADDU on the opposite register, then loop or finish
       is(semRelease) {
-
         when(!semAFired) {
-          semOp(ArithmeticDataParam.ADDU)
+          sem.a.valid        := true.B
+          sem.a.bits.opcode  := TilelinkOpcodes.ArithmeticData
+          sem.a.bits.param   := ArithmeticDataParam.ADDU
+          sem.a.bits.size    := 1.U
+          sem.a.bits.source  := 0.U
+          sem.a.bits.address := semReleaseAddr
+          sem.a.bits.data    := reg.semaphore.get.semStepSize
+          sem.a.bits.mask    := Fill(c.dataBusSize, 1.U(1.W))
+          sem.a.bits.corrupt := 0.U
           when(sem.a.fire) { semAFired := true.B }
         }
 
@@ -279,7 +319,6 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
           semAFired := false.B
 
           val next = remaining.get - reg.semaphore.get.semStepSize
-
           remaining.get := next
 
           when(next > 0.U) {

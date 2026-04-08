@@ -170,12 +170,10 @@ class LoadTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.clock.step()
       dut.io.instructionStream.valid.poke(false.B)
 
-      // 2. Respond to semaphore AQGREQ (acquire)
-      //    The TLDMA sends ArithmeticData with param=AQGREQ(6)
-      respondSemaphore(dut, returnValue = stepSize)
-
-      // Verify the semaphore request had the correct param
-      // (AQGREQ = 6, checked inside respondSemaphore via opcode check)
+      // 2. Respond to semaphore AQGREQ (acquire) then SUBU (decrement)
+      //    Load is write-only → producer: acquire on emptyReg (base+1)
+      respondSemaphore(dut, returnValue = stepSize)  // AQGREQ
+      respondSemaphore(dut, returnValue = 0)          // SUBU
 
       // 3. Stream data beats through AXIST → TLDMA → scratchOut
       dut.io.scratchOut.a.ready.poke(true.B)

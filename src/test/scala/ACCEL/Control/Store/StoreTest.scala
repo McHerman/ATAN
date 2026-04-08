@@ -171,8 +171,10 @@ class StoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.clock.step()
       dut.io.instructionStream.valid.poke(false.B)
 
-      // 2. Respond to semaphore AQGREQ (acquire)
-      respondSemaphore(dut, returnValue = stepSize)
+      // 2. Respond to semaphore AQGREQ (acquire) then SUBU (decrement)
+      //    Store is read-only → consumer: acquire on fullReg (base+0)
+      respondSemaphore(dut, returnValue = stepSize)  // AQGREQ
+      respondSemaphore(dut, returnValue = 0)          // SUBU
 
       // 3. TLDMA issues Get on A channel
       dut.io.readPort.a.ready.poke(true.B)

@@ -252,14 +252,15 @@ class MemDMATest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.interface.descriptor.valid.poke(false.B)
       dut.clock.step()
 
-      // Both pipelines in state 8: AQGREQ visible before any TL activity
+      // Pipeline A: writeEn=false → consumer → AQGREQ on base+0
+      // Pipeline B: writeEn=true  → producer → AQGREQ on base+1
       waitFor(dut)(dut.io.semaphoreA.a.valid.peek().litToBoolean, "semaphoreA AQGREQ")
       dut.io.semaphoreA.a.bits.param.expect(ArithmeticDataParam.AQGREQ)
-      dut.io.semaphoreA.a.bits.address.expect(0x10.U)
+      dut.io.semaphoreA.a.bits.address.expect(0x10.U)  // consumer: base+0
 
       waitFor(dut)(dut.io.semaphoreB.a.valid.peek().litToBoolean, "semaphoreB AQGREQ")
       dut.io.semaphoreB.a.bits.param.expect(ArithmeticDataParam.AQGREQ)
-      dut.io.semaphoreB.a.bits.address.expect(0x20.U)
+      dut.io.semaphoreB.a.bits.address.expect(0x21.U)  // producer: base+1
 
       // Complete both acquires
       dut.io.semaphoreA.a.ready.poke(true.B)
@@ -275,7 +276,25 @@ class MemDMATest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.semaphoreA.d.valid.poke(false.B)
       dut.io.semaphoreB.d.valid.poke(false.B)
 
-      // After acquires: pipeline A reads portA (Get), pipeline B writes portB (PutFullData)
+      // Complete both decrements (SUBU)
+      waitFor(dut)(dut.io.semaphoreA.a.valid.peek().litToBoolean, "semaphoreA SUBU")
+      dut.io.semaphoreA.a.bits.param.expect(ArithmeticDataParam.SUBU)
+      dut.io.semaphoreA.a.ready.poke(true.B)
+      waitFor(dut)(dut.io.semaphoreB.a.valid.peek().litToBoolean, "semaphoreB SUBU")
+      dut.io.semaphoreB.a.bits.param.expect(ArithmeticDataParam.SUBU)
+      dut.io.semaphoreB.a.ready.poke(true.B)
+      dut.clock.step()
+      dut.io.semaphoreA.a.ready.poke(false.B)
+      dut.io.semaphoreB.a.ready.poke(false.B)
+      dut.io.semaphoreA.d.valid.poke(true.B)
+      dut.io.semaphoreA.d.bits.opcode.poke(TilelinkOpcodes.AccessAckData)
+      dut.io.semaphoreB.d.valid.poke(true.B)
+      dut.io.semaphoreB.d.bits.opcode.poke(TilelinkOpcodes.AccessAckData)
+      dut.clock.step()
+      dut.io.semaphoreA.d.valid.poke(false.B)
+      dut.io.semaphoreB.d.valid.poke(false.B)
+
+      // After acquires+decrements: pipeline A reads portA (Get), pipeline B writes portB (PutFullData)
       // Service portA read: respond with AccessAckData to populate AtoB FIFO for pipeline B
       waitFor(dut)(dut.io.portA.a.valid.peek().litToBoolean, "portA.a.valid")
       dut.io.portA.a.ready.poke(true.B)
@@ -298,10 +317,12 @@ class MemDMATest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.clock.step()
       dut.io.portB.d.valid.poke(false.B)
 
+      // Pipeline A (consumer): ADDU on base+1 (emptyReg)
       waitFor(dut)(dut.io.semaphoreA.a.valid.peek().litToBoolean, "semaphoreA ADDU")
       dut.io.semaphoreA.a.bits.param.expect(ArithmeticDataParam.ADDU)
-      dut.io.semaphoreA.a.bits.address.expect(0x10.U)
+      dut.io.semaphoreA.a.bits.address.expect(0x11.U)
 
+      // Pipeline B (producer): ADDU on base+0 (fullReg)
       waitFor(dut)(dut.io.semaphoreB.a.valid.peek().litToBoolean, "semaphoreB ADDU")
       dut.io.semaphoreB.a.bits.param.expect(ArithmeticDataParam.ADDU)
       dut.io.semaphoreB.a.bits.address.expect(0x20.U)

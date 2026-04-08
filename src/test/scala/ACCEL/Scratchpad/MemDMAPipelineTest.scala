@@ -209,11 +209,19 @@ class MemDMAPipelineTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.clock.step()
       dut.io.interface.descriptor.valid.poke(false.B)
 
-      // 1. Acquire
+      // writeEn=true → producer: acquire on base+1 (emptyReg), release on base+0 (fullReg)
+
+      // 1. Acquire (AQGREQ on emptyReg)
       waitFor(dut)(dut.io.semaphoreIF.get.a.valid.peek().litToBoolean, "AQGREQ")
       dut.io.semaphoreIF.get.a.bits.param.expect(ArithmeticDataParam.AQGREQ)
-      dut.io.semaphoreIF.get.a.bits.address.expect(semAddr.U)
+      dut.io.semaphoreIF.get.a.bits.address.expect((semAddr + 1).U)
       dut.io.tl.a.valid.expect(false.B)
+      completeSemOp(dut)
+
+      // 1b. Decrement (SUBU on emptyReg)
+      waitFor(dut)(dut.io.semaphoreIF.get.a.valid.peek().litToBoolean, "SUBU")
+      dut.io.semaphoreIF.get.a.bits.param.expect(ArithmeticDataParam.SUBU)
+      dut.io.semaphoreIF.get.a.bits.address.expect((semAddr + 1).U)
       completeSemOp(dut)
 
       // 2. Write
@@ -229,7 +237,7 @@ class MemDMAPipelineTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.clock.step()
       dut.io.tl.d.valid.poke(false.B)
 
-      // 3. Release (remaining → 0, so goes to respond)
+      // 3. Release (ADDU on fullReg, remaining → 0, so goes to respond)
       waitFor(dut)(dut.io.semaphoreIF.get.a.valid.peek().litToBoolean, "ADDU")
       dut.io.semaphoreIF.get.a.bits.param.expect(ArithmeticDataParam.ADDU)
       dut.io.semaphoreIF.get.a.bits.address.expect(semAddr.U)
@@ -272,12 +280,20 @@ class MemDMAPipelineTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.clock.step()
       dut.io.interface.descriptor.valid.poke(false.B)
 
+      // writeEn=false → consumer: acquire on base+0 (fullReg), release on base+1 (emptyReg)
+
       for (step <- 0 until nSteps) {
         val expectedAddr = (baseAddr + step * stepSize).U
 
-        // 1. Acquire
+        // 1. Acquire (AQGREQ on fullReg)
         waitFor(dut)(dut.io.semaphoreIF.get.a.valid.peek().litToBoolean, s"AQGREQ step $step")
         dut.io.semaphoreIF.get.a.bits.param.expect(ArithmeticDataParam.AQGREQ)
+        dut.io.semaphoreIF.get.a.bits.address.expect(semAddr.U)
+        completeSemOp(dut)
+
+        // 1b. Decrement (SUBU on fullReg)
+        waitFor(dut)(dut.io.semaphoreIF.get.a.valid.peek().litToBoolean, s"SUBU step $step")
+        dut.io.semaphoreIF.get.a.bits.param.expect(ArithmeticDataParam.SUBU)
         dut.io.semaphoreIF.get.a.bits.address.expect(semAddr.U)
         completeSemOp(dut)
 
@@ -299,10 +315,10 @@ class MemDMAPipelineTest extends AnyFreeSpec with Matchers with ChiselSim {
           dut.io.tl.d.valid.poke(false.B)
         }
 
-        // 3. Release
+        // 3. Release (ADDU on emptyReg)
         waitFor(dut)(dut.io.semaphoreIF.get.a.valid.peek().litToBoolean, s"ADDU step $step")
         dut.io.semaphoreIF.get.a.bits.param.expect(ArithmeticDataParam.ADDU)
-        dut.io.semaphoreIF.get.a.bits.address.expect(semAddr.U)
+        dut.io.semaphoreIF.get.a.bits.address.expect((semAddr + 1).U)
         completeSemOp(dut)
       }
 
