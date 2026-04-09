@@ -11,7 +11,8 @@ class Execute(implicit c: Configuration) extends Module {
     val scratchOut = Vec(c.grainDim, new TilelinkPort)
     val scratchIn  = Vec(2, new TilelinkPort)
 
-    val semaphoreIF = Flipped(new TilelinkPort)
+    val writeSemaphoreIF = Vec(c.grainDim, new TilelinkPort)
+    val readSemaphoreIF  = Vec(2, Vec(c.grainDim, new TilelinkPort))
 
     val debug = new ExeDebug
   })
@@ -40,6 +41,11 @@ class Execute(implicit c: Configuration) extends Module {
     SysWrapper.io.scratchIn(0)(0) <> io.scratchIn(0)
     SysWrapper.io.scratchIn(1)(0) <> io.scratchIn(1)
   }
+
+  /// SEMAPHORE CONNECTIONS ///
+
+  io.writeSemaphoreIF <> SysWrapper.io.writeSemaphoreIF
+  io.readSemaphoreIF  <> SysWrapper.io.readSemaphoreIF
 
   /// DEBUG ///
 
