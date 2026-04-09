@@ -7,11 +7,13 @@ import chisel3.util.MixedVec._
 class Dispatch(implicit c: Configuration) extends Module {
 
   val io = IO(new Bundle {
-    val in = Flipped(Decoupled(new Bundle{val op = UInt(6.W); val data = MixedVec(new ExecuteInst, new LoadInst, new StoreInst)}))
+    val in = Flipped(Decoupled(new Bundle{val op = UInt(6.W); val data = MixedVec(new ExecuteInst, new LoadInst, new StoreInst, new DMAInst, new SemProgInst)}))
 
-    val exeStream   = Decoupled(new ExecuteInst)
-    val loadStream  = Decoupled(new LoadInst)
-    val storeStream = Decoupled(new StoreInst)
+    val exeStream     = Decoupled(new ExecuteInst)
+    val loadStream    = Decoupled(new LoadInst)
+    val storeStream   = Decoupled(new StoreInst)
+    val dmaStream     = Decoupled(new DMAInst)
+    val semProgStream = Decoupled(new SemProgInst)
   })
 
   val inReg = RegInit(0.U.asTypeOf(io.in.bits.cloneType))
@@ -19,12 +21,16 @@ class Dispatch(implicit c: Configuration) extends Module {
 
   io.in.ready := !valid
 
-  io.exeStream.valid   := false.B
-  io.exeStream.bits    := DontCare
-  io.loadStream.valid  := false.B
-  io.loadStream.bits   := DontCare
-  io.storeStream.valid := false.B
-  io.storeStream.bits  := DontCare
+  io.exeStream.valid     := false.B
+  io.exeStream.bits      := DontCare
+  io.loadStream.valid    := false.B
+  io.loadStream.bits     := DontCare
+  io.storeStream.valid   := false.B
+  io.storeStream.bits    := DontCare
+  io.dmaStream.valid     := false.B
+  io.dmaStream.bits      := DontCare
+  io.semProgStream.valid := false.B
+  io.semProgStream.bits  := DontCare
 
   // Latch incoming decoded instruction
   when(io.in.fire) {
@@ -49,6 +55,16 @@ class Dispatch(implicit c: Configuration) extends Module {
         io.storeStream.valid := true.B
         io.storeStream.bits  := inReg.data(2).asInstanceOf[StoreInst]
         when(io.storeStream.ready) { valid := false.B }
+      }
+      is(4.U) {
+        io.dmaStream.valid := true.B
+        io.dmaStream.bits  := inReg.data(3).asInstanceOf[DMAInst]
+        when(io.dmaStream.ready) { valid := false.B }
+      }
+      is(5.U) {
+        io.semProgStream.valid := true.B
+        io.semProgStream.bits  := inReg.data(4).asInstanceOf[SemProgInst]
+        when(io.semProgStream.ready) { valid := false.B }
       }
     }
   }

@@ -8,9 +8,11 @@ class FrontEnd(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
     val AXIST = Flipped(new AXIST_2(64, 2, 1, 1, 1))
 
-    val exeStream   = Decoupled(new ExecuteInst)
-    val loadStream  = Decoupled(new LoadInst)
-    val storeStream = Decoupled(new StoreInst)
+    val exeStream     = Decoupled(new ExecuteInst)
+    val loadStream    = Decoupled(new LoadInst)
+    val storeStream   = Decoupled(new StoreInst)
+    val dmaStream     = Decoupled(new DMAInst)
+    val semProgStream = Decoupled(new SemProgInst)
 
     val receiverDebug = Valid(UInt(64.W))
     val decodeDebug   = Valid(new LoadInst)
@@ -33,9 +35,11 @@ class FrontEnd(implicit c: Configuration) extends Module {
   Decoder.io.instructionStream <> instQueue.io.deq
   Dispatch.io.in <> Decoder.io.issueStream
 
-  io.exeStream   <> Dispatch.io.exeStream
-  io.loadStream  <> Dispatch.io.loadStream
-  io.storeStream <> Dispatch.io.storeStream
+  io.exeStream     <> Dispatch.io.exeStream
+  io.loadStream    <> Dispatch.io.loadStream
+  io.storeStream   <> Dispatch.io.storeStream
+  io.dmaStream     <> Dispatch.io.dmaStream
+  io.semProgStream <> Dispatch.io.semProgStream
 
   io.receiverDebug.valid := Reciever.io.instructionStream.valid
   io.receiverDebug.bits  := Reciever.io.instructionStream.bits.instruction
