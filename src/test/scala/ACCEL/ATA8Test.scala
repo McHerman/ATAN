@@ -33,11 +33,21 @@ class ATA8Test extends AnyFreeSpec with Matchers with ChiselSim {
 
   // ── Helpers ─────────────────────────────────────────────────────────────
 
+  // Global cycle counter. Reset at the start of each test and incremented
+  // by every step() call that goes through `stepN` / `waitFor` below so the
+  // test can log total execution time in clock cycles.
+  var totalCycles: Long = 0L
+
+  def stepN(clock: chisel3.Clock, n: Int = 1): Unit = {
+    clock.step(n)
+    totalCycles += n
+  }
+
   def waitFor(clock: chisel3.Clock)(cond: => Boolean, msg: String): Unit = {
     var cycles = 0
     while (!cond) {
       require(cycles < maxCycles, s"Timeout waiting for: $msg (after $maxCycles cycles)")
-      clock.step()
+      stepN(clock)
       cycles += 1
     }
   }
@@ -109,31 +119,26 @@ class ATA8Test extends AnyFreeSpec with Matchers with ChiselSim {
     dut.io.AXIST_inInst.tkeep.poke("hffff".U)
     dut.io.AXIST_inInst.tstrb.poke("hffff".U)
     waitFor(dut.clock)(dut.io.AXIST_inInst.tready.peek().litToBoolean, "AXIST_inInst.tready")
-    dut.clock.step()
+    stepN(dut.clock)
     dut.io.AXIST_inInst.tvalid.poke(false.B)
   }
 
   def feedLoadData(dut: ATA8, rows: Seq[BigInt]): Unit = {
     for ((row, i) <- rows.zipWithIndex) {
-      //dut.io.AXIST_inData.tready.expect(true.B)
-
       dut.io.AXIST_inData.tdata.poke(row.U(64.W))
       dut.io.AXIST_inData.tstrb.poke("hff".U)
       dut.io.AXIST_inData.tkeep.poke("hff".U)
       dut.io.AXIST_inData.tvalid.poke(true.B)
+      dut.io.AXIST_inData.tlast.poke((i == rows.length - 1).B)
 
-      if(i == rows.length - 1) {
-        dut.io.AXIST_inData.tlast.poke(true.B)
-        //dut.clock.step()
-      } else {
-        //waitFor(dut.clock)(dut.io.AXIST_inData.tready.peek().litToBoolean, s"AXIST_inData.tready beat $i")
-        dut.io.AXIST_inData.tready.expect(true.B)
-        //dut.clock.step()
-      }
+      // AXIST.tready is combinationally gated on tvalid (LoadController ties
+      // tready := DMA.dataIn.request.valid, which only pulses while tl.a.fire,
+      // and tl.a.valid := dataIn.request.ready := AXIST.tvalid). So we must
+      // poke tvalid first and only then wait for the handshake.
+      waitFor(dut.clock)(dut.io.AXIST_inData.tready.peek().litToBoolean,
+        s"AXIST_inData.tready beat $i")
 
-      print("Sent index " + i + " Out of " + rows.length)
-
-      dut.clock.step()
+      stepN(dut.clock)
     }
     dut.io.AXIST_inData.tvalid.poke(false.B)
     dut.io.AXIST_inData.tlast.poke(false.B)
@@ -145,7 +150,7 @@ class ATA8Test extends AnyFreeSpec with Matchers with ChiselSim {
     while (collected.length < nRows) {
       waitFor(dut.clock)(dut.io.AXIST_out.tvalid.peek().litToBoolean, s"AXIST_out.tvalid beat ${collected.length}")
       collected += dut.io.AXIST_out.tdata.peek().litValue
-      dut.clock.step()
+      stepN(dut.clock)
     }
     dut.io.AXIST_out.tready.poke(false.B)
     collected.toSeq
@@ -157,8 +162,7 @@ class ATA8Test extends AnyFreeSpec with Matchers with ChiselSim {
     // sourceWidth=8 is required by TLXbar's ID-range scheme (10 IDs per master).
     val testConfig = Configuration.default().copy(sourceWidth = 8)
     simulate(new ATA8(testConfig)) { dut =>
-      //defaultPokes(dut)
-      //dut.clock.step(2)
+      totalCycles = 0L
 
       // ── Scratchpad addresses (beat-indexed) ──
       val addrA = 0
@@ -213,33 +217,101 @@ class ATA8Test extends AnyFreeSpec with Matchers with ChiselSim {
       ))
 
       // ── Feed load data for A then B ──
+      // feedLoadData handshakes per-beat, so no pre-delay is needed: the
+      // first beat will stall inside feedLoadData until the Load DMA has
+      // walked through its semaphore states and reached writeFirst.
       val matrixRows = (0 until n).map(i => packRow(matrix(i).toSeq))
 
-      // Step a few cycles so the pipeline can start processing the sem-prog
-      // and load instructions before we start pushing data.
-      dut.clock.step(50)
-
-      //def dumpDbg(tag: String): Unit = {
-      //  println(s"[debug $tag]")
-      //  println(s"  AXIST_inInst.tready = ${dut.io.AXIST_inInst.tready.peek().litToBoolean}")
-      //  println(s"  AXIST_inData.tready = ${dut.io.AXIST_inData.tready.peek().litToBoolean}")
-      //  println(s"  AXIST_out.tvalid    = ${dut.io.AXIST_out.tvalid.peek().litToBoolean}")
-      //}
-      //dumpDbg("after 50 cycles")
-//
-//
-      //println(s"  Load.state     = ${dut.Load.io.debug.state.peek().litValue}")
-      //println(s"  Execute.state  = ${dut.Execute.io.debug.state.peek().litValue}")
-      //println(s"  Store.state    = ${dut.Store.io.debug.state.peek().litValue}")
-
+      val execStart = totalCycles
       feedLoadData(dut, matrixRows) // matrix A
-
-      dut.clock.step(50)    
-  
       feedLoadData(dut, matrixRows) // matrix B
 
       // ── Collect store output ──
       val outputRows = collectStoreData(dut, n)
+      val execEnd = totalCycles
+
+      println(f"[ATA8 blocking] total cycles     : ${totalCycles}%d")
+      println(f"[ATA8 blocking] execution cycles : ${execEnd - execStart}%d (first load beat → last store beat)")
+
+      // ── Verify ──
+      val expected = matrixDotProduct(matrix, matrix)
+      for (row <- 0 until n) {
+        val got = unpackRow(outputRows(row))
+        for (col <- 0 until n) {
+          assert(got(col) == (expected(row)(col) & 0xFF),
+            s"Mismatch at ($row,$col): got ${got(col)}, expected ${expected(row)(col) & 0xFF}")
+        }
+      }
+    }
+  }
+
+  "ATA8 should load, matmul, and store two 8x8 matrices through streaming semaphores" in {
+    // sourceWidth=8 is required by TLXbar's ID-range scheme (10 IDs per master).
+    val testConfig = Configuration.default().copy(sourceWidth = 8)
+    simulate(new ATA8(testConfig)) { dut =>
+      totalCycles = 0L
+
+      // ── Scratchpad addresses (beat-indexed) ──
+      val addrA = 0
+      val addrB = n * n
+      val addrD = 2 * n * n
+
+      // Streaming stepSize: semaphores are released every `step` beats instead
+      // of once per full matrix, so producers and consumers overlap.
+      val step = 4 
+
+      // ── Semaphore layout ──
+      val sem0A = 0   // sem 0, port a
+      val sem0B = 2   // sem 0, port b
+      val sem1A = 4   // sem 1, port a
+      val sem1B = 6   // sem 1, port b
+      val sem2A = 8   // sem 2, port a
+      val sem2B = 10  // sem 2, port b
+
+      // ── Program semaphores: producer acquires empty (= size), consumer acquires full (= 0) ──
+      sendInst(dut, assembleSemProg(semAddr = 0, full = 0, empty = n))
+      sendInst(dut, assembleSemProg(semAddr = 1, full = 0, empty = n))
+      sendInst(dut, assembleSemProg(semAddr = 2, full = 0, empty = n))
+
+      // ── Load A (producer on sem 0) ──
+      sendInst(dut, assembleLd(
+        size = n,
+        addrdPkg0 = addrPkgBits(addrA, semEnable = true, semAddr = sem0A, stepSize = step)
+      ))
+
+      // ── Load B (producer on sem 1) ──
+      sendInst(dut, assembleLd(
+        size = n,
+        addrdPkg0 = addrPkgBits(addrB, semEnable = true, semAddr = sem1A, stepSize = step)
+      ))
+
+      // ── Execute matmul (consumers on sem 0 + sem 1, producer on sem 2) ──
+      sendInst(dut, assembleExe(
+        mode = 0, size = n,
+        addrsPkg0 = addrPkgBits(addrA, semEnable = true, semAddr = sem0B, stepSize = step),
+        addrsPkg1 = addrPkgBits(addrB, semEnable = true, semAddr = sem1B, stepSize = step),
+        addrdPkg0 = addrPkgBits(addrD, semEnable = true, semAddr = sem2A, stepSize = step)
+      ))
+
+      // ── Store (consumer on sem 2) ──
+      sendInst(dut, assembleSt(
+        size = n,
+        addrsPkg0 = addrPkgBits(addrD, semEnable = true, semAddr = sem2B, stepSize = step)
+      ))
+
+      // ── Feed load data for A then B ──
+      val matrixRows = (0 until n).map(i => packRow(matrix(i).toSeq))
+
+      val execStart = totalCycles
+      feedLoadData(dut, matrixRows) // matrix A
+      feedLoadData(dut, matrixRows) // matrix B
+
+      // ── Collect store output ──
+      val outputRows = collectStoreData(dut, n)
+      val execEnd = totalCycles
+
+      println(f"[ATA8 streaming] total cycles     : ${totalCycles}%d")
+      println(f"[ATA8 streaming] execution cycles : ${execEnd - execStart}%d (first load beat → last store beat)")
 
       // ── Verify ──
       val expected = matrixDotProduct(matrix, matrix)
