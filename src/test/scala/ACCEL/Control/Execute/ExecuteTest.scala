@@ -4,7 +4,6 @@ import chisel3._
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.freespec.AnyFreeSpec
 import org.scalatest.matchers.must.Matchers
-import scala.annotation.init.widen
 
 class ExecuteTest extends AnyFreeSpec with Matchers with ChiselSim {
 
@@ -159,7 +158,7 @@ class ExecuteTest extends AnyFreeSpec with Matchers with ChiselSim {
       readPort0.a.bits.size.expect(n.U)
 
       readPort1.a.bits.opcode.expect(TilelinkOpcodes.Get)
-      readPort1.a.bits.address.expect(8.U)
+      readPort1.a.bits.address.expect((n*n).U)
       readPort1.a.bits.size.expect(n.U)
 
       dut.clock.step()
@@ -177,7 +176,7 @@ class ExecuteTest extends AnyFreeSpec with Matchers with ChiselSim {
       waitFor(dut.clock)(writePort.a.valid.peek().litToBoolean, "write DMA issues PutFullData")
 
       writePort.a.bits.opcode.expect(TilelinkOpcodes.PutFullData)
-      writePort.a.bits.address.expect(16.U)
+      writePort.a.bits.address.expect((2*n*n).U)
 
       // ── Collect and verify write data ──
       val expectedResult = matrixDotProduct(matrix3, matrix3)
@@ -214,7 +213,7 @@ class ExecuteTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       // ── Issue instruction (OS mode = 1) ──
       pokeInstruction(dut, mode = 1, size = n,
-        addr0 = 0, addr1 = 8, addrD = 16)
+        addr0 = 0, addr1 = n*n, addrD = 2*n*n)
 
       waitFor(dut.clock)(dut.io.instructionStream.ready.peek().litToBoolean, "instructionStream.ready")
       dut.clock.step()
@@ -233,7 +232,7 @@ class ExecuteTest extends AnyFreeSpec with Matchers with ChiselSim {
       readPort0.a.bits.address.expect(0.U)
 
       readPort1.a.bits.opcode.expect(TilelinkOpcodes.Get)
-      readPort1.a.bits.address.expect(8.U)
+      readPort1.a.bits.address.expect((n*n).U)
 
       dut.clock.step()
       readPort0.a.ready.poke(false.B)
@@ -252,7 +251,7 @@ class ExecuteTest extends AnyFreeSpec with Matchers with ChiselSim {
       waitFor(dut.clock)(writePort.a.valid.peek().litToBoolean, "write DMA issues PutFullData")
 
       writePort.a.bits.opcode.expect(TilelinkOpcodes.PutFullData)
-      writePort.a.bits.address.expect(16.U)
+      writePort.a.bits.address.expect((2*n*n).U)
 
       // ── Collect and verify write data ──
       val expectedResult = matrixDotProduct(matrix3, matrix3)
