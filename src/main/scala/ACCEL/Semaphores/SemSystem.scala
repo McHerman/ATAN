@@ -10,7 +10,7 @@ class SemSystem(noPorts: Int)(implicit c: Configuration) extends Module {
   })
 
   val queue      = Module(new BufferFIFO(8, new SemProgInst))
-  val SemaphoreBank = Module(new SemaphoreBank(4))
+  val SemaphoreBank = Module(new SemaphoreBank(noPorts))
 
   queue.io.WriteData <> io.instructionStream
   

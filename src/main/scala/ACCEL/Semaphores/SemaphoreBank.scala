@@ -32,7 +32,8 @@ class SemaphoreBank(noPorts: Int)(implicit c: Configuration) extends Module {
   val xbarConfig = TLXbarConfig(
     nMasters = noPorts,
     slaves = Seq.tabulate(noSemaphores * 2)(i => TLSlaveConfig(Seq((BigInt(i * 2), BigInt(0x1))))),
-    arbiterPolicy = "lock"
+    //arbiterPolicy = "lock"
+    arbiterPolicy = "roundRobin"
   )(c)
 
   val xbar = Module(new TLXbar(xbarConfig))
