@@ -21,8 +21,10 @@ class MemTier(tier: TierConfig, nDMAPorts: Int)(implicit mc: MemSystemConfig)
     val dmaPorts   = Vec(nDMAPorts,        Flipped(new TilelinkPort))
   })
 
-  // Total scratchpad ports
-  val totalWritePorts = tier.nWritePorts + nDMAPorts
+  // Total scratchpad ports: external writes are arbitrated down to a single
+  // port before reaching the SRAM, so the scratchpad only sees one write port
+  // for all external masters plus one extra per DMA port.
+  val totalWritePorts = 1 + nDMAPorts
   val totalReadPorts  = tier.nReadPorts  + nDMAPorts
 
   val scratchpad = Module(new MemTierScratchpad(tier.nBanks, tier.bankDepth,

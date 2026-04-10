@@ -10,17 +10,25 @@ class ATA8(config: Configuration) extends Module {
   val io = IO(new Bundle {
     val AXIST_out     = new AXIST_2(64, 2, 1, 1, 1)
     val AXIST_inData  = Flipped(new AXIST_2(64, 2, 1, 1, 1))
-    val AXIST_inInst  = Flipped(new AXIST_2(64, 2, 1, 1, 1))
+    val AXIST_inInst  = Flipped(new AXIST_2(128, 2, 1, 1, 1))
     val axi_s0        = Flipped(new CustomAXI4Lite(32, 32))
+    //val dbgLoadState  = Output(UInt(4.W))
+    //val dbgExeState   = Output(UInt(4.W))
+    //val dbgStoreState = Output(UInt(4.W))
   })
+
+  implicit val mc: MemSystemConfig = MemSystemConfig.default().copy(sourceWidth = c.sourceWidth)
+  private val nDMAs = mc.tiers.length - 1
+  private val nExeSemPorts = 3 * c.grainDim  // writeSem(grainDim) + readSem(2 * grainDim)
+  private val nSemPorts = nExeSemPorts + 1 + 1 + 2 * nDMAs  // Execute + Load + Store + DMA
 
   val FrontEnd     = Module(new FrontEnd)
   val Execute      = Module(new Execute())
   val Load         = Module(new Load())
   val Store        = Module(new Store())
-  val Scratchpad   = Module(new ScratchpadWrapper)
+  val MemSys       = Module(new MemSystem(c))
   val Config       = Module(new Config())
-  val SemBank      = Module(new SemaphoreBank(2))
+  val SemSys       = Module(new SemSystem(nSemPorts))
 
   //// FRONTEND ////
 
@@ -29,30 +37,44 @@ class ATA8(config: Configuration) extends Module {
   Load.io.instructionStream    <> FrontEnd.io.loadStream
   Store.io.instructionStream   <> FrontEnd.io.storeStream
 
+  MemSys.io.dmaInstructionStream  <> FrontEnd.io.dmaStream
+  SemSys.io.instructionStream     <> FrontEnd.io.semProgStream
+
   //// EXECUTE ////
 
-  Execute.io.scratchIn(0) <> Scratchpad.io.ReadPorts(0)
-  Execute.io.scratchIn(1) <> Scratchpad.io.ReadPorts(1)
-  Execute.io.semaphoreIF  <> SemBank.io.inPorts(0)
+  Execute.io.scratchIn(0) <> MemSys.io.tier0ReadPorts(0)
+  Execute.io.scratchIn(1) <> MemSys.io.tier0ReadPorts(1)
+
+  // Execute semaphore ports: writeSem(grainDim) + readSem(2 * grainDim)
+  var semIdx = 0
+  for (i <- 0 until c.grainDim) {
+    Execute.io.writeSemaphoreIF(i) <> SemSys.io.inPorts(semIdx); semIdx += 1
+  }
+  for (i <- 0 until 2; j <- 0 until c.grainDim) {
+    Execute.io.readSemaphoreIF(i)(j) <> SemSys.io.inPorts(semIdx); semIdx += 1
+  }
 
   //// LOAD ////
 
   Load.io.AXIST        <> io.AXIST_inData
-  Load.io.semaphoreIF  <> SemBank.io.inPorts(1)
+  Load.io.semaphoreIF  <> SemSys.io.inPorts(semIdx); semIdx += 1
 
   //// STORE ////
 
-  Store.io.AXIST   <> io.AXIST_out
-  Store.io.readPort <> Scratchpad.io.ReadPorts(2)
+  Store.io.AXIST    <> io.AXIST_out
+  Store.io.readPort <> MemSys.io.tier0ReadPorts(2)
+  Store.io.semaphoreIF <> SemSys.io.inPorts(semIdx); semIdx += 1
 
-  //// SCRATCHPAD ////
+  //// MEMORY SYSTEM ////
 
-  Scratchpad.io.WritePorts <> VecInit(Execute.io.scratchOut ++ VecInit(Seq(Load.io.scratchOut)))
+  MemSys.io.tier0WritePorts <> VecInit(Execute.io.scratchOut ++ VecInit(Seq(Load.io.scratchOut)))
 
-  //// SEMAPHORE BANK ////
+  //// SEMAPHORE SYSTEM — DMA semaphore ports ////
 
-  SemBank.io.progPort.valid := false.B
-  SemBank.io.progPort.bits  := DontCare
+  for (i <- 0 until nDMAs) {
+    MemSys.io.semaphoreA(i) <> SemSys.io.inPorts(semIdx); semIdx += 1
+    MemSys.io.semaphoreB(i) <> SemSys.io.inPorts(semIdx); semIdx += 1
+  }
 
   /// DEBUG ///
 
