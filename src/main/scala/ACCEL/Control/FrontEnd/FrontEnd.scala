@@ -6,7 +6,7 @@ import chisel3.util._
 
 class FrontEnd(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
-    val AXIST = Flipped(new AXIST_2(64, 2, 1, 1, 1))
+    val AXIST = Flipped(new AXIST_2(128, 2, 1, 1, 1))
 
     val exeStream     = Decoupled(new ExecuteInst)
     val loadStream    = Decoupled(new LoadInst)

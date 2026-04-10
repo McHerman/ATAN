@@ -80,9 +80,9 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
   }
 
   def sendInstruction(dut: FrontEnd, raw: BigInt): Unit = {
-    dut.io.AXIST.tdata.poke(raw.U(64.W))
+    dut.io.AXIST.tdata.poke(raw.U(128.W))
     dut.io.AXIST.tvalid.poke(true.B)
-    dut.io.AXIST.tkeep.poke("hff".U)
+    dut.io.AXIST.tkeep.poke("hffff".U)
     dut.clock.step()
   }
 
