@@ -51,7 +51,7 @@ package object ATA8 {
         8,    // tagCount
         16,   // addrWidth
         8,    // dataBusSize
-        1     // sourceWidth
+        8     // sourceWidth (needs to cover TLXbar ID ranges: 10 ids/master rounded to 16)
       )
     }
 

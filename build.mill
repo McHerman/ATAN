@@ -15,6 +15,8 @@ object `ATAN` extends SbtModule {
 
   override def millSourcePath = super.millSourcePath / os.up
 
+  override def mainClass = Some("ATA8.ATA8")
+
   override def scalacOptions = Seq(
     "-language:reflectiveCalls",
     "-deprecation",

@@ -1,9 +1,9 @@
 default:
     @just --list
 
-# Compile all Chisel sources
+# Compile all Chisel sources and emit SystemVerilog
 comp:
-    mill ATAN.compile
+    mill ATAN.run
 
 # Run all tests
 test:
