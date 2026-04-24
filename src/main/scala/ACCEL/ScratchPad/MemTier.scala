@@ -4,13 +4,17 @@ import chisel3._
 import chisel3.util._
 
 /**
- * Single memory tier: a parameterized scratchpad with:
- *   - nWritePorts external TileLink write ports (Put only, via write arbiter)
+ * Single memory tier with:
+ *   - nWritePorts external TileLink write ports (Put only)
  *   - nReadPorts  external TileLink read  ports (Get only)
- *   - nDMAPorts   combined TileLink R/W ports   (for MemDMA, both Get and Put)
+ *   - nDMAPorts combined TileLink R/W ports (for DMA)
+ *   - 1 hostIn combined TileLink R/W port
  *
- * Scratchpad SRAM dimensions are taken from [[TierConfig.nBanks]] and
- * [[TierConfig.bankDepth]].
+ * Each RW port is split by opcode into separate read and write TL streams
+ * via a [[TLSplitter]].  All write-side streams are arbitrated into a
+ * single [[TilelinkWriteHandler]], and all read-side streams into a single
+ * [[TilelinkReadHandler]].  The scratchpad sees exactly 1 write port and
+ * 1 read port with no additional arbitration.
  */
 class MemTier(tier: TierConfig, nDMAPorts: Int)(implicit mc: MemSystemConfig)
     extends Module {
@@ -19,41 +23,163 @@ class MemTier(tier: TierConfig, nDMAPorts: Int)(implicit mc: MemSystemConfig)
     val writePorts = Vec(tier.nWritePorts, Flipped(new TilelinkPort))
     val readPorts  = Vec(tier.nReadPorts,  Flipped(new TilelinkPort))
     val dmaPorts   = Vec(nDMAPorts,        Flipped(new TilelinkPort))
+    val hostIn     = Flipped(new TilelinkPort)
   })
 
-  // Total scratchpad ports: external writes are arbitrated down to a single
-  // port before reaching the SRAM, so the scratchpad only sees one write port
-  // for all external masters plus one extra per DMA port.
-  val totalWritePorts = 1 + nDMAPorts
-  val totalReadPorts  = tier.nReadPorts  + nDMAPorts
+  // ── Scratchpad: 1 write port, 1 read port ────────────────────────────────
+  val scratchpad = Module(new MemTierScratchpad(tier.nBanks, tier.bankDepth, 1, 1))
 
-  val scratchpad = Module(new MemTierScratchpad(tier.nBanks, tier.bankDepth,
-                                                totalWritePorts, totalReadPorts))
+  // ── Split each RW port by opcode ─────────────────────────────────────────
+  val nRW = nDMAPorts + 1
+  val splitters = Seq.fill(nRW)(Module(new TLSplitter))
 
-  // ── External write ports (Put only) via write arbiter ────────────────────
-  val writeArb = Module(new ScratchWriteArbiter(tier.nWritePorts))
-  writeArb.io.inPorts <> io.writePorts
+  io.dmaPorts.zipWithIndex.foreach { case (p, i) => splitters(i).io.in <> p }
+  splitters(nDMAPorts).io.in <> io.hostIn
+
+  // ── Write path: all write sources → arbiter → handler → scratchpad ───────
+  val nWriteSources = tier.nWritePorts + nRW
+  val writeArb = Module(new ScratchWriteArbiter(nWriteSources))
+
+  (io.writePorts ++ splitters.map(_.io.write)).zip(writeArb.io.inPorts).foreach {
+    case (src, dst) => dst <> src
+  }
+
   val writeHandler = Module(new TilelinkWriteHandler)
   writeHandler.io.tl <> writeArb.io.outPort
   scratchpad.io.Writeport(0) <> writeHandler.io.mem
 
-  // ── External read ports (Get only) ───────────────────────────────────────
-  val readHandlers = Seq.fill(tier.nReadPorts)(Module(new TilelinkReadHandler))
-  readHandlers.zipWithIndex.foreach { case (h, i) =>
-    h.io.tl                   <> io.readPorts(i)
-    scratchpad.io.Readport(i) <> h.io.mem
+  // ── Read path: all read sources → arbiter → handler → scratchpad ─────────
+  val nReadSources = tier.nReadPorts + nRW
+  val readArb = Module(new ScratchReadArbiter(nReadSources))
+
+  (io.readPorts ++ splitters.map(_.io.read)).zip(readArb.io.inPorts).foreach {
+    case (src, dst) => dst <> src
   }
 
-  // ── DMA ports (combined Get/Put) ─────────────────────────────────────────
-  val rwHandlers = Seq.fill(nDMAPorts)(Module(new TilelinkRWHandler))
-  rwHandlers.zipWithIndex.foreach { case (h, i) =>
-    h.io.tl <> io.dmaPorts(i)
-    // Write side occupies scratchpad write slot (1 + i)
-    scratchpad.io.Writeport(1 + i)          <> h.io.wMem
-    // Read side occupies scratchpad read slot (nReadPorts + i)
-    scratchpad.io.Readport(tier.nReadPorts + i) <> h.io.rMem
+  val readHandler = Module(new TilelinkReadHandler)
+  readHandler.io.tl <> readArb.io.outPort
+  scratchpad.io.Readport(0) <> readHandler.io.mem
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TLSplitter — routes a single RW TileLink port to separate R and W ports
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Inspects the A-channel opcode and routes:
+ *   - Get           → [[io.read]]  (A channel forwarded, D channel returned)
+ *   - PutFullData   → [[io.write]] (A channel forwarded, D channel returned)
+ *
+ * Only one path is active per transaction, so the D channel is simply
+ * muxed back based on which path was selected.  The splitter locks for
+ * the duration of a transaction (multi-beat writes, multi-beat read
+ * responses) to prevent interleaving.
+ */
+class TLSplitter(implicit c: MemBusConfig) extends Module {
+  val io = IO(new Bundle {
+    val in    = Flipped(new TilelinkPort)
+    val read  = new TilelinkPort
+    val write = new TilelinkPort
+  })
+
+  // Defaults — nothing connected
+  io.in.a.ready    := false.B
+  io.in.d.valid    := false.B
+  io.in.d.bits     := DontCare
+
+  io.read.a.valid  := false.B
+  io.read.a.bits   := DontCare
+  io.read.d.ready  := false.B
+
+  io.write.a.valid := false.B
+  io.write.a.bits  := DontCare
+  io.write.d.ready := false.B
+
+  val sIdle :: sRead :: sWrite :: Nil = Enum(3)
+  val state   = RegInit(sIdle)
+  val beatCnt = Reg(UInt(24.W))
+
+  switch(state) {
+
+    is(sIdle) {
+      when(io.in.a.valid) {
+        switch(io.in.a.bits.opcode) {
+          is(TilelinkOpcodes.Get) {
+            // Route to read path
+            io.read.a.valid := io.in.a.valid
+            io.read.a.bits  := io.in.a.bits
+            io.in.a.ready   := io.read.a.ready
+            when(io.in.a.fire) {
+              beatCnt := io.in.a.bits.size   // number of D beats expected
+              state   := sRead
+            }
+          }
+          is(TilelinkOpcodes.PutFullData) {
+            // Route to write path
+            io.write.a.valid := io.in.a.valid
+            io.write.a.bits  := io.in.a.bits
+            io.in.a.ready    := io.write.a.ready
+            when(io.in.a.fire) {
+              when(io.in.a.bits.size > 1.U) {
+                beatCnt := io.in.a.bits.size - 1.U   // remaining A beats
+                state   := sWrite
+              }
+              // single-beat write: stay idle, D ack handled below
+            }
+          }
+          is(TilelinkOpcodes.PutPartialData) {
+            assert(false.B, "TLSplitter: PutPartialData not supported")
+          }
+          is(TilelinkOpcodes.ArithmeticData) {
+            assert(false.B, "TLSplitter: ArithmeticData not supported")
+          }
+        }
+      }
+      // In idle, also forward any pending D responses from either path
+      when(io.write.d.valid) {
+        io.in.d <> io.write.d
+      }.elsewhen(io.read.d.valid) {
+        io.in.d <> io.read.d
+      }
+    }
+
+    is(sRead) {
+      // Forward D beats back to the input
+      io.in.d.valid    := io.read.d.valid
+      io.in.d.bits     := io.read.d.bits
+      io.read.d.ready  := io.in.d.ready
+      when(io.in.d.fire) {
+        beatCnt := beatCnt - 1.U
+        when(beatCnt === 1.U) {
+          state := sIdle
+        }
+      }
+    }
+
+    is(sWrite) {
+      // Forward remaining A beats to write path
+      io.write.a.valid := io.in.a.valid
+      io.write.a.bits  := io.in.a.bits
+      io.in.a.ready    := io.write.a.ready
+      when(io.in.a.fire) {
+        beatCnt := beatCnt - 1.U
+        when(beatCnt === 1.U) {
+          state := sIdle
+        }
+      }
+      // Forward D ack back
+      when(io.write.d.valid) {
+        io.in.d.valid    := io.write.d.valid
+        io.in.d.bits     := io.write.d.bits
+        io.write.d.ready := io.in.d.ready
+      }
+    }
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Scratchpad
+// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Raw SRAM scratchpad with configurable bank count, bank depth, and port

@@ -5,19 +5,21 @@ import chisel3.experimental._
 import chisel3.util._
 
 class ATA8(config: Configuration) extends Module {
-  implicit val c = config
+  implicit val c: Configuration = config
 
   val io = IO(new Bundle {
     val AXIST_out     = new AXIST_2(64, 2, 1, 1, 1)
     val AXIST_inData  = Flipped(new AXIST_2(64, 2, 1, 1, 1))
     val AXIST_inInst  = Flipped(new AXIST_2(128, 2, 1, 1, 1))
     val axi_s0        = Flipped(new CustomAXI4Lite(32, 32))
+
+    val hostIn = Flipped(new TilelinkPort()(mc))
     //val dbgLoadState  = Output(UInt(4.W))
     //val dbgExeState   = Output(UInt(4.W))
     //val dbgStoreState = Output(UInt(4.W))
   })
 
-  implicit val mc: MemSystemConfig = MemSystemConfig.default().copy(sourceWidth = c.sourceWidth)
+  implicit lazy val mc: MemSystemConfig = MemSystemConfig.default().copy(sourceWidth = c.sourceWidth)
   private val nDMAs = mc.tiers.length - 1
   private val nExeSemPorts = 3 * c.grainDim  // writeSem(grainDim) + readSem(2 * grainDim)
   private val nSemPorts = nExeSemPorts + 1 + 1 + 2 * nDMAs  // Execute + Load + Store + DMA
@@ -68,6 +70,7 @@ class ATA8(config: Configuration) extends Module {
   //// MEMORY SYSTEM ////
 
   MemSys.io.tier0WritePorts <> VecInit(Execute.io.scratchOut ++ VecInit(Seq(Load.io.scratchOut)))
+  MemSys.io.hostIn <> io.hostIn
 
   //// SEMAPHORE SYSTEM — DMA semaphore ports ////
 

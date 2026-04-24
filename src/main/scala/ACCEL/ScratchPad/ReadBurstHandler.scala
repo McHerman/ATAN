@@ -32,29 +32,27 @@ class TilelinkReadHandler(implicit c: MemBusConfig) extends Module {
   }
 
   when(isLocked) {
-    when(io.mem.request.ready) {
-      io.mem.request.valid := true.B
-      io.mem.request.bits.addr.get := addrReg
+    io.mem.request.valid := true.B
+    io.mem.request.bits.addr.get := addrReg
 
-      io.tl.d.valid := io.mem.response.valid
-      io.tl.d.bits.opcode := TilelinkOpcodes.AccessAckData
-      io.tl.d.bits.param := 0.U
-      io.tl.d.bits.size := sizeReg
-      io.tl.d.bits.source := 0.U
-      io.tl.d.bits.sink := 0.U
-      io.tl.d.bits.denied := 0.U
-      io.tl.d.bits.data := io.mem.response.bits.readData.asUInt
-      io.tl.d.bits.corrupt := 0.U
+    io.tl.d.valid := io.mem.response.valid
+    io.tl.d.bits.opcode := TilelinkOpcodes.AccessAckData
+    io.tl.d.bits.param := 0.U
+    io.tl.d.bits.size := sizeReg
+    io.tl.d.bits.source := 0.U
+    io.tl.d.bits.sink := 0.U
+    io.tl.d.bits.denied := 0.U
+    io.tl.d.bits.data := io.mem.response.bits.readData.asUInt
+    io.tl.d.bits.corrupt := 0.U
 
-      when(io.mem.request.fire) {
-        addrReg := addrReg + 1.U
-      }
-      when(io.tl.d.fire) {
-        beatCnt := beatCnt - 1.U
+    when(io.mem.request.fire) {
+      addrReg := addrReg + 1.U
+    }
+    when(io.tl.d.fire) {
+      beatCnt := beatCnt - 1.U
 
-        when(beatCnt === 0.U) {
-          isLocked := false.B
-        }
+      when(beatCnt === 0.U) {
+        isLocked := false.B
       }
     }
   }

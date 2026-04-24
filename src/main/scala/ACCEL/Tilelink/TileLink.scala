@@ -4,10 +4,13 @@ import chisel3._
 import chisel3.util._
 
 object TilelinkOpcodes {
+  // A channel opcodes
   val PutFullData    = 0.U(3.W)
   val PutPartialData = 1.U(3.W)
   val ArithmeticData = 2.U(3.W)
+  val LogicalData    = 3.U(3.W)
   val Get            = 4.U(3.W)
+  // D channel opcodes
   val AccessAck      = 0.U(3.W)
   val AccessAckData  = 1.U(3.W)
 }

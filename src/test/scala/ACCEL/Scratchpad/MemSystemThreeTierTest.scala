@@ -44,6 +44,12 @@ class ThreeTierDUT(msCfg: MemSystemConfig, bankCfg: Configuration) extends Modul
   io.tier0Read           <> memSys.io.tier0ReadPorts(0)
   io.dmaInstructionStream <> memSys.io.dmaInstructionStream
   io.semProgPort         <> semBank.io.progPort
+
+
+  memSys.io.hostIn.a.valid := false.B
+  memSys.io.hostIn.a.bits := DontCare 
+
+  memSys.io.hostIn.d.ready := false.B 
 }
 
 class MemSystemDUT(msCfg: MemSystemConfig, bankCfg: Configuration) extends Module {
@@ -69,6 +75,12 @@ class MemSystemDUT(msCfg: MemSystemConfig, bankCfg: Configuration) extends Modul
   io.tier0Read           <> memSys.io.tier0ReadPorts(0)
   io.dmaInstructionStream <> memSys.io.dmaInstructionStream
   io.semInstructionStream <> semSys.io.instructionStream
+
+
+  memSys.io.hostIn.a.valid := false.B
+  memSys.io.hostIn.a.bits := DontCare 
+
+  memSys.io.hostIn.d.ready := false.B 
 }
 
 

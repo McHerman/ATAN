@@ -26,6 +26,8 @@ class MemSystem(ctrlCfg: Configuration)(implicit mc: MemSystemConfig) extends Mo
 
     val semaphoreA = Vec(nDMAs, new TilelinkPort)
     val semaphoreB = Vec(nDMAs, new TilelinkPort)
+
+    val hostIn = Flipped(new TilelinkPort)
   })
 
   // ── Instantiate tiers ─────────────────────────────────────────────────────
@@ -42,6 +44,7 @@ class MemSystem(ctrlCfg: Configuration)(implicit mc: MemSystemConfig) extends Mo
   // ── Wire tier-0 external ports ────────────────────────────────────────────
   tiers(0).io.writePorts <> io.tier0WritePorts
   tiers(0).io.readPorts  <> io.tier0ReadPorts
+  tiers(0).io.hostIn     <> io.hostIn
 
   // ── Terminate external ports on non-tier-0 tiers ─────────────────────────
   // Only tier 0 has external access; tiers 1..N-1 have no software-visible
@@ -58,6 +61,9 @@ class MemSystem(ctrlCfg: Configuration)(implicit mc: MemSystemConfig) extends Mo
       port.a.bits  := DontCare
       port.d.ready := false.B
     }
+    tiers(i).io.hostIn.a.valid := false.B
+    tiers(i).io.hostIn.a.bits  := DontCare
+    tiers(i).io.hostIn.d.ready := false.B
   }
 
   // ── Wire DMA interfaces and inter-tier connections ────────────────────────

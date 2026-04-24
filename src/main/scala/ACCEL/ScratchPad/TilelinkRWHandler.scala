@@ -69,14 +69,14 @@ class TilelinkRWHandler(implicit c: MemBusConfig) extends Module {
             state   := sReadLock
           }
         }.otherwise {
-          // Write: consume first beat into wMem (ready = wMem.ready)
+          // Write: pass valid/ready through independently to avoid combinational cycle
           io.tl.a.ready := io.wMem.ready
+          io.wMem.valid                  := io.tl.a.valid
+          io.wMem.bits.addr              := io.tl.a.bits.address
+          io.wMem.bits.data.writeData    :=
+            io.tl.a.bits.data.asTypeOf(Vec(c.dataBusSize, UInt(8.W)))
+          io.wMem.bits.data.strb         := VecInit(io.tl.a.bits.mask.asBools)
           when(io.tl.a.fire) {
-            io.wMem.valid                  := true.B
-            io.wMem.bits.addr              := io.tl.a.bits.address
-            io.wMem.bits.data.writeData    :=
-              io.tl.a.bits.data.asTypeOf(Vec(c.dataBusSize, UInt(8.W)))
-            io.wMem.bits.data.strb         := VecInit(io.tl.a.bits.mask.asBools)
             sizeReg := io.tl.a.bits.size
             when(io.tl.a.bits.size > 1.U) {
               addrReg := io.tl.a.bits.address + 1.U
@@ -111,29 +111,26 @@ class TilelinkRWHandler(implicit c: MemBusConfig) extends Module {
 
     // ── Read burst: issue requests and stream back AccessAckData ─────────────
     is(sReadLock) {
-      when(io.rMem.request.ready) {
-        // Issue next address every cycle (pipeline: response comes 1 cycle later)
-        io.rMem.request.valid      := true.B
-        io.rMem.request.bits.addr.get  := addrReg
+      io.rMem.request.valid          := true.B
+      io.rMem.request.bits.addr.get  := addrReg
 
-        // Forward response on D channel
-        io.tl.d.valid              := io.rMem.response.valid
-        io.tl.d.bits.opcode        := TilelinkOpcodes.AccessAckData
-        io.tl.d.bits.param         := 0.U
-        io.tl.d.bits.size          := sizeReg
-        io.tl.d.bits.source        := 0.U
-        io.tl.d.bits.sink          := 0.U
-        io.tl.d.bits.denied        := 0.U
-        io.tl.d.bits.data          := io.rMem.response.bits.readData.asUInt
-        io.tl.d.bits.corrupt       := 0.U
+      // Forward response on D channel
+      io.tl.d.valid              := io.rMem.response.valid
+      io.tl.d.bits.opcode        := TilelinkOpcodes.AccessAckData
+      io.tl.d.bits.param         := 0.U
+      io.tl.d.bits.size          := sizeReg
+      io.tl.d.bits.source        := 0.U
+      io.tl.d.bits.sink          := 0.U
+      io.tl.d.bits.denied        := 0.U
+      io.tl.d.bits.data          := io.rMem.response.bits.readData.asUInt
+      io.tl.d.bits.corrupt       := 0.U
 
-        when(io.rMem.request.fire) {
-          addrReg := addrReg + 1.U
-        }
-        when(io.tl.d.fire) {
-          beatCnt := beatCnt - 1.U
-          when(beatCnt === 0.U) { state := sIdle }
-        }
+      when(io.rMem.request.fire) {
+        addrReg := addrReg + 1.U
+      }
+      when(io.tl.d.fire) {
+        beatCnt := beatCnt - 1.U
+        when(beatCnt === 0.U) { state := sIdle }
       }
     }
   }

@@ -23,14 +23,14 @@ class TilelinkWriteHandler(implicit c: MemBusConfig) extends Module {
   val firstBeat = RegInit(false.B)
 
   when(!isLocked) {
-    // Accept first A beat and write it
+    // Accept first A beat and write it — pass valid/ready through independently
     io.tl.a.ready := io.mem.ready
-    when(io.tl.a.fire) {
-      io.mem.valid := true.B
-      io.mem.bits.addr := io.tl.a.bits.address
-      io.mem.bits.data.writeData := io.tl.a.bits.data.asTypeOf(Vec(c.dataBusSize, UInt(8.W)))
-      io.mem.bits.data.strb := VecInit(io.tl.a.bits.mask.asBools)
+    io.mem.valid := io.tl.a.valid
+    io.mem.bits.addr := io.tl.a.bits.address
+    io.mem.bits.data.writeData := io.tl.a.bits.data.asTypeOf(Vec(c.dataBusSize, UInt(8.W)))
+    io.mem.bits.data.strb := VecInit(io.tl.a.bits.mask.asBools)
 
+    when(io.tl.a.fire) {
       when(io.tl.a.bits.size > 1.U) {
         isLocked := true.B
         addrReg := io.tl.a.bits.address + 1.U
@@ -42,14 +42,14 @@ class TilelinkWriteHandler(implicit c: MemBusConfig) extends Module {
       }
     }
   }.otherwise {
-    // Accept remaining A beats
+    // Accept remaining A beats — pass valid/ready through independently
     io.tl.a.ready := io.mem.ready
-    when(io.tl.a.fire) {
-      io.mem.valid := true.B
-      io.mem.bits.addr := addrReg
-      io.mem.bits.data.writeData := io.tl.a.bits.data.asTypeOf(Vec(c.dataBusSize, UInt(8.W)))
-      io.mem.bits.data.strb := VecInit(io.tl.a.bits.mask.asBools)
+    io.mem.valid := io.tl.a.valid
+    io.mem.bits.addr := addrReg
+    io.mem.bits.data.writeData := io.tl.a.bits.data.asTypeOf(Vec(c.dataBusSize, UInt(8.W)))
+    io.mem.bits.data.strb := VecInit(io.tl.a.bits.mask.asBools)
 
+    when(io.tl.a.fire) {
       addrReg := addrReg + 1.U
       beatCnt := beatCnt - 1.U
 
