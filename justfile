@@ -3,7 +3,7 @@ default:
 
 # Compile all Chisel sources and emit SystemVerilog
 comp:
-    mill ATAN.run
+    mill ATAN.compile
 
 # Run all tests
 test:
