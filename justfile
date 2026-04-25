@@ -20,6 +20,11 @@ test-only-trace class:
 verilog:
     mill ATAN.run
 
+# Regenerate FlatBuffer Java classes from schema (requires flatc)
+flatc:
+    flatc --java -o assembler/src/main/java eaac_program.fbs
+    find assembler/src/main/java -name "*.java" -exec sed -i 's/Constants\.FLATBUFFERS_[0-9_]*();//' {} +
+
 # Clean build artifacts
 clean:
     mill clean

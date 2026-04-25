@@ -9,6 +9,13 @@ import mill.scalalib._
 // to properly generate and handle test directories and output files.
 // See: https://github.com/com-lihaoyi/mill/issues/3840
 
+// Pure-Scala shared definitions (instruction layouts, etc.)
+// No Chisel dependency — consumed by both ATAN and assembler.
+object shared extends SbtModule {
+  def scalaVersion = "2.13.18"
+  override def millSourcePath = super.millSourcePath / os.up / "shared"
+}
+
 object `ATAN` extends SbtModule {
   def scalaVersion = "2.13.18"
   val chiselVersion = "7.7.0"
@@ -16,6 +23,8 @@ object `ATAN` extends SbtModule {
   override def millSourcePath = super.millSourcePath / os.up
 
   override def mainClass = Some("ATA8.ATA8")
+
+  override def moduleDeps = Seq(shared)
 
   override def scalacOptions = Seq(
     "-language:reflectiveCalls",
@@ -30,6 +39,28 @@ object `ATAN` extends SbtModule {
   override def scalacPluginIvyDeps = Agg(
     ivy"org.chipsalliance:::chisel-plugin:$chiselVersion",
   )
+  object test extends SbtTests with TestModule.ScalaTest {
+    override def moduleDeps = super.moduleDeps ++ Seq(assembler)
+    override def ivyDeps = Agg(
+      ivy"org.scalatest::scalatest::3.2.19"
+    )
+  }
+}
+
+// EAAC assembler: reads FlatBuffer programs, emits 128-bit instruction binaries.
+object assembler extends SbtModule {
+  def scalaVersion = "2.13.18"
+
+  override def millSourcePath = super.millSourcePath / os.up / "assembler"
+
+  override def mainClass = Some("eaac.assembler.Main")
+
+  override def moduleDeps = Seq(shared)
+
+  override def ivyDeps = Agg(
+    ivy"com.google.flatbuffers:flatbuffers-java:25.2.10",
+  )
+
   object test extends SbtTests with TestModule.ScalaTest {
     override def ivyDeps = Agg(
       ivy"org.scalatest::scalatest::3.2.19"

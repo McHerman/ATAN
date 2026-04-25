@@ -2,6 +2,7 @@ package ATA8
 
 import chisel3._
 import chisel3.util._
+import eaac.shared.InstructionSet
 
 class InstructionPackage extends Bundle {
   val instruction = UInt(128.W)
@@ -37,63 +38,69 @@ class ExecuteInst(implicit c: Configuration) extends InstBaseExtended(2, 1) with
   val mode      = UInt(1.W)
   val grainSize = UInt(4.W)
 
-  def layout = Seq(
-    opcode    -> 0,
-    func      -> 6,
-    mode      -> 7,
-    size      -> 8,
-    addrs(0)  -> 16,
-    addrs(1)  -> 52,
-    addrd(0)  -> 88,
-    grainSize -> 124,
+  private val fieldMap: Map[String, Data] = Map(
+    "opcode" -> opcode, "func" -> func, "mode" -> mode,
+    "size" -> size, "addrs0" -> addrs(0), "addrs1" -> addrs(1),
+    "addrd0" -> addrd(0), "grainSize" -> grainSize,
   )
+
+  def layout = InstructionSet.Execute.fields.map { f =>
+    fieldMap(f.name) -> f.startBit
+  }
 }
 
 class LoadInst(implicit c: Configuration) extends InstBaseExtended(0, 1) with Decodable {
   val mode = UInt(1.W)
 
-  def layout = Seq(
-    opcode   -> 0,
-    func     -> 6,
-    mode     -> 7,
-    size     -> 8,
-    addrd(0) -> 16,
+  private val fieldMap: Map[String, Data] = Map(
+    "opcode" -> opcode, "func" -> func, "mode" -> mode,
+    "size" -> size, "addrd0" -> addrd(0),
   )
+
+  def layout = InstructionSet.Load.fields.map { f =>
+    fieldMap(f.name) -> f.startBit
+  }
 }
 
 class StoreInst(implicit c: Configuration) extends InstBaseExtended(1, 0) with Decodable {
-  val mode = UInt(1.W) //Technically not needed, whole decoder is a big mess anyways 
+  val mode = UInt(1.W)
 
-  def layout = Seq(
-    opcode   -> 0,
-    func     -> 6,
-    size     -> 8,
-    addrs(0) -> 16,
+  private val fieldMap: Map[String, Data] = Map(
+    "opcode" -> opcode, "func" -> func,
+    "size" -> size, "addrs0" -> addrs(0),
   )
+
+  def layout = InstructionSet.Store.fields.map { f =>
+    fieldMap(f.name) -> f.startBit
+  }
 }
 
 class DMAInst(implicit c: Configuration) extends InstBaseExtended(1, 1) with Decodable {
   val DMAAddr = UInt(4.W)
 
-  def layout = Seq(
-    opcode  -> 0,
-    func    -> 6,
-    size    -> 8,
-    addrs(0) -> 16,
-    addrd(0) -> 52,
-    DMAAddr -> 88,
+  private val fieldMap: Map[String, Data] = Map(
+    "opcode" -> opcode, "func" -> func,
+    "size" -> size, "addrs0" -> addrs(0),
+    "addrd0" -> addrd(0), "DMAAddr" -> DMAAddr,
   )
+
+  def layout = InstructionSet.DMA.fields.map { f =>
+    fieldMap(f.name) -> f.startBit
+  }
 }
 
 class SemProgInst(implicit c: Configuration) extends InstBase with Decodable {
   val semAddr = UInt(8.W)
   val initValues = Vec(2, UInt(16.W))
 
-  def layout = Seq(
-    opcode  -> 0,
-    semAddr -> 6,
-    initValues -> 14,
+  private val fieldMap: Map[String, Data] = Map(
+    "opcode" -> opcode, "semAddr" -> semAddr,
+    "initValues0" -> initValues(0), "initValues1" -> initValues(1),
   )
+
+  def layout = InstructionSet.SemProg.fields.map { f =>
+    fieldMap(f.name) -> f.startBit
+  }
 }
 
 class SysOP(implicit c: Configuration) extends Bundle {
