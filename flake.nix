@@ -25,6 +25,7 @@
           just
           surferWrapped
           gtkwave
+          flatbuffers
         ];
 
       in {

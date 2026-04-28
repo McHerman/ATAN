@@ -1,0 +1,146 @@
+// EAAC Program FlatBuffer Schema
+// Serializes the final compiled IR into a binary format for runtime consumption.
+
+namespace eaac_fb;
+
+/// Element types for memref buffers.
+enum ElementType : byte {
+  I8 = 0,
+  I16,
+  I32,
+  I64,
+  F16,
+  F32,
+  F64
+}
+
+/// A constant tensor (weights, biases, etc.) embedded in the program.
+table Constant {
+  /// Name matching the memref.global symbol (e.g. "__constant_128x128xi8").
+  name: string;
+  /// Shape dimensions.
+  shape: [uint32];
+  /// Element type.
+  element_type: ElementType;
+  /// Raw data bytes (little-endian).
+  data: [ubyte];
+}
+
+/// A reference to a statically allocated buffer.
+table BufferRef {
+  /// Static byte offset within its memory tier.
+  offset: uint64;
+  /// Memory tier (1=DRAM, 2=Global SRAM, 3=Local SRAM).
+  tier: uint8;
+  /// Shape dimensions (e.g. [128, 128]).
+  shape: [uint32];
+  /// Element type.
+  element_type: ElementType;
+  /// If set, this buffer's initial contents come from the named constant.
+  constant_name: string;
+}
+
+/// Allocate and initialize a hardware semaphore pair.
+table SemAlloc {
+  /// Static hardware address (0–15).
+  address: uint16;
+  /// Initial empty count.
+  empty_count: uint32;
+  /// Initial full count.
+  full_count: uint32;
+}
+
+/// Release a hardware semaphore pair.
+table SemDealloc {
+  /// Hardware address being released.
+  address: uint16;
+}
+
+/// A semaphore dependency inside an execute block.
+/// Pairs a semaphore address with a buffer reference.
+table SemDep {
+  /// Hardware semaphore address.
+  sem_address: uint16;
+  /// The buffer this dependency guards.
+  buffer: BufferRef;
+}
+
+/// An asynchronous DMA transfer operation.
+table DmaStart {
+  src: BufferRef;
+  dst: BufferRef;
+}
+
+/// A load from host to accelerator, replaces function arguments
+table LoadOp {
+  dst: BufferRef;
+}
+
+// A store from accelerator to host, replaces function returns
+table StoreOp {
+  src: BufferRef;
+}
+
+/// A matrix multiplication operation.
+table Matmul {
+  src0: BufferRef;
+  src1: BufferRef;
+  dst: BufferRef;
+}
+
+/// The payload of an execute block.
+union ExecutePayload { DmaStart, Matmul, LoadOp, StoreOp }
+
+/// An execute block with semaphore acquire/require dependencies.
+table Execute {
+  /// Producer-side: semaphores to signal on completion.
+  acquires: [SemDep];
+  /// Consumer-side: semaphores to wait on before starting.
+  requires: [SemDep];
+  /// The operation to execute.
+  payload: ExecutePayload;
+}
+
+/// A memory allocation (for tier-2 intermediate buffers).
+table MemAlloc {
+  buffer: BufferRef;
+}
+
+/// A memory deallocation.
+table MemDealloc {
+  buffer: BufferRef;
+}
+
+/// Top-level command — the operations appear in program order.
+union Command { SemAlloc, SemDealloc, Execute, MemAlloc, MemDealloc }
+
+table Operation {
+  command: Command;
+}
+
+/// A function in the program.
+table Function {
+  name: string;
+
+  /// Removed args and results
+
+  /// Operations in program order.
+  ops: [Operation];
+}
+
+/// Top-level program container.
+table Program {
+  /// Functions in the module.
+  functions: [Function];
+  /// Maximum number of hardware semaphore pairs used.
+  num_semaphores: uint16;
+  /// Memory required per tier in bytes: index 0=unused, 1=DRAM, 2=Global SRAM, 3=Local SRAM.
+  memory_per_tier: [uint64];
+  /// Constant tensors (weights, biases) referenced by BufferRef.constant_name.
+  constants: [Constant];
+}
+
+root_type Program;
+
+file_identifier "EAAC";
+file_extension "eaac";

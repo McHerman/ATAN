@@ -345,3 +345,7 @@ hs_err_pid*
 # All generated sv
 *.sv 
 
+
+# Generated flatbuffer classes
+assembler/src/main/java/eaac_fb/
+
