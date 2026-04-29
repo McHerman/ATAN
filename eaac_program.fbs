@@ -30,7 +30,7 @@ table Constant {
 table BufferRef {
   /// Static byte offset within its memory tier.
   offset: uint64;
-  /// Memory tier (1=DRAM, 2=Global SRAM, 3=Local SRAM).
+  /// Memory tier (0=Local SRAM, 1=Global SRAM, 2=DRAM).
   tier: uint8;
   /// Shape dimensions (e.g. [128, 128]).
   shape: [uint32];
@@ -101,7 +101,7 @@ table Execute {
   payload: ExecutePayload;
 }
 
-/// A memory allocation (for tier-2 intermediate buffers).
+/// A memory allocation.
 table MemAlloc {
   buffer: BufferRef;
 }
@@ -134,7 +134,7 @@ table Program {
   functions: [Function];
   /// Maximum number of hardware semaphore pairs used.
   num_semaphores: uint16;
-  /// Memory required per tier in bytes: index 0=unused, 1=DRAM, 2=Global SRAM, 3=Local SRAM.
+  /// Memory required per tier in bytes: index 0=Local SRAM, 1=Global SRAM, 2=DRAM.
   memory_per_tier: [uint64];
   /// Constant tensors (weights, biases) referenced by BufferRef.constant_name.
   constants: [Constant];
