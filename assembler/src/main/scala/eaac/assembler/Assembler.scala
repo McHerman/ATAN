@@ -22,9 +22,25 @@ object AssemblerConfig {
 class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
 
   /** Result of assembling a single function. */
+
+  case class Preload(
+    shape: Seq[Int],
+    offsetAddress: BigInt,
+    tier: Int,
+    elementType: Byte,
+    data: Seq[Byte]
+  )
+
   case class AssembledFunction(
     name: String,
     instructions: Seq[BigInt],
+    preloads: Seq[Preload]
+  )
+
+
+  case class Lowered(
+    instructions: Seq[BigInt],
+    preloads: Seq[Preload]
   )
 
   /** Result of assembling a full program. */
@@ -32,56 +48,82 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     functions: Seq[AssembledFunction],
   ) {
     def allInstructions: Seq[BigInt] = functions.flatMap(_.instructions)
+    def allPreloads: Seq[Preload] = functions.flatMap(_.preloads)
   }
 
   /** Assemble a FlatBuffer binary into instruction words. */
   def assemble(buf: ByteBuffer): AssembledProgram = {
     val program = Program.getRootAsProgram(buf)
+    val consts = (0 until program.constantsLength()).map(program.constants(_))
     val funcs = (0 until program.functionsLength()).map { i =>
-      assembleFunction(program.functions(i))
+      assembleFunction(program.functions(i), consts)
     }
     AssembledProgram(funcs)
   }
 
-  private def assembleFunction(fn: eaac_fb.Function): AssembledFunction = {
+  private def assembleFunction(fn: eaac_fb.Function, const: Seq[eaac_fb.Constant]): AssembledFunction = {
     val instructions = new ArrayBuffer[BigInt]()
-    for (i <- 0 until fn.opsLength())
-      instructions ++= lowerCommand(fn.ops(i))
-    AssembledFunction(fn.name(), instructions.toSeq)
+    val preloads = new ArrayBuffer[Preload]()
+    for (i <- 0 until fn.opsLength()) {
+      val lowered = lowerCommand(fn.ops(i), const)
+      instructions ++= lowered.instructions
+      preloads ++= lowered.preloads
+    }
+    AssembledFunction(fn.name(), instructions.toSeq, preloads.toSeq)
   }
 
-  private def lowerCommand(op: Operation): Seq[BigInt] = op.commandType() match {
+  private def lowerCommand(op: Operation, const: Seq[eaac_fb.Constant]): Lowered = op.commandType() match {
     case Command.SemAlloc   => lowerSemAlloc(op)
     case Command.SemDealloc => lowerSemDealloc(op)
     case Command.Execute    => lowerExecute(op)
-    case Command.MemAlloc   => Seq.empty
-    case Command.MemDealloc => Seq.empty
+    //case Command.MemAlloc   => Seq.empty
+    case Command.MemAlloc   => lowerMemoryAlloc(op,const) 
+    case Command.MemDealloc => Lowered(Seq.empty, Seq.empty)
     case other => throw new IllegalArgumentException(s"Unknown command type: $other")
   }
 
   // ── SemAlloc / SemDealloc ─────────────────────────────────────────────
 
-  private def lowerSemAlloc(op: Operation): Seq[BigInt] = {
+  // Doesnt get lowered into a instruction, but rather a host preload
+  private def lowerMemoryAlloc(op: Operation, const: Seq[eaac_fb.Constant]): Lowered = {
+
+    val alloc = op.command(new MemAlloc()).asInstanceOf[MemAlloc]
+    val buf = alloc.buffer()
+    val constantName = buf.constantName()
+
+    if (constantName == null) return Lowered(Seq.empty, Seq.empty)
+
+    val constant = const.find(_.name() == constantName).getOrElse(
+      throw new IllegalArgumentException(s"Constant '$constantName' not found")
+    )
+
+    val shape = (0 until buf.shapeLength()).map(buf.shape(_).toInt)
+    val data = (0 until constant.dataLength()).map(constant.data(_).toByte)
+    val preload = Preload(shape, buf.offset(), buf.tier(), buf.elementType(), data)
+    Lowered(Seq.empty, Seq(preload))
+  }
+
+  private def lowerSemAlloc(op: Operation): Lowered = {
     val sem = op.command(new SemAlloc()).asInstanceOf[SemAlloc]
-    Seq(Encoding.encodeSemProg(
+    Lowered(Seq(Encoding.encodeSemProg(
       semAddr   = sem.address(),
       initEmpty = sem.emptyCount().toInt,
       initFull  = sem.fullCount().toInt,
-    ))
+    )), Seq.empty)
   }
 
-  private def lowerSemDealloc(op: Operation): Seq[BigInt] = {
+  private def lowerSemDealloc(op: Operation): Lowered = {
     val sem = op.command(new SemDealloc()).asInstanceOf[SemDealloc]
-    Seq(Encoding.encodeSemProg(
+    Lowered(Seq(Encoding.encodeSemProg(
       semAddr   = sem.address(),
       initEmpty = 0,
       initFull  = 0,
-    ))
+    )), Seq.empty)
   }
 
   // ── Execute (DMA or Compute) ──────────────────────────────────────────
 
-  private def lowerExecute(op: Operation): Seq[BigInt] = {
+  private def lowerExecute(op: Operation): Lowered = {
     val exec = op.command(new Execute()).asInstanceOf[Execute]
     exec.payloadType() match {
       case ExecutePayload.DmaStart => lowerDmaPayload(exec)
@@ -92,7 +134,7 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     }
   }
 
-  private def lowerDmaPayload(exec: Execute): Seq[BigInt] = {
+  private def lowerDmaPayload(exec: Execute): Lowered = {
     val dma = exec.payload(new DmaStart()).asInstanceOf[DmaStart]
     val src = dma.src()
     val dst = dma.dst()
@@ -101,50 +143,44 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     val dstSem = findSemForBuffer(exec, isAcquire = false, dst)
     val beats = bufferBeats(src)
 
-    Seq(Encoding.encodeDMA(
+    Lowered(Seq(Encoding.encodeDMA(
       func   = 0,
       size   = beats,
       addrs0 = encodeBufferAddr(src, srcSem, beats),
       addrd0 = encodeBufferAddr(dst, dstSem, beats),
-    ))
+    )), Seq.empty)
   }
 
-  private def lowerLoadPayload(exec: Execute): Seq[BigInt] = {
+  private def lowerLoadPayload(exec: Execute): Lowered = {
     val load = exec.payload(new LoadOp()).asInstanceOf[LoadOp]
     val dst = load.dst()
 
     val dstSem = findSemForBuffer(exec, isAcquire = false, dst)
     val beats = bufferBeats(dst)
 
-    Seq(Encoding.encodeLoad(
+    Lowered(Seq(Encoding.encodeLoad(
       func   = 0,
       mode   = 0,
       size   = beats,
       addrd0 = encodeBufferAddr(dst, dstSem, beats),
-    ))
+    )), Seq.empty)
   }
 
-  private def lowerStorePayload(exec: Execute): Seq[BigInt] = {
+  private def lowerStorePayload(exec: Execute): Lowered = {
     val store = exec.payload(new StoreOp()).asInstanceOf[StoreOp]
     val src = store.src()
 
     val srcSem = findSemForBuffer(exec, isAcquire = true, src)
     val beats = bufferBeats(src)
 
-    Seq(Encoding.encodeStore(
+    Lowered(Seq(Encoding.encodeStore(
       func   = 0,
       size   = beats,
       addrs0 = encodeBufferAddr(src, srcSem, beats),
-    ))
+    )), Seq.empty)
   }
 
-  /** Lower a Matmul into a single Execute instruction.
-    *
-    * Semaphore mapping:
-    *   - `requires` dependencies guard src0/src1 (consumer waits for data)
-    *   - `acquires` dependencies guard dst (producer signals result ready)
-    */
-  private def lowerMatmulPayload(exec: Execute): Seq[BigInt] = {
+  private def lowerMatmulPayload(exec: Execute): Lowered = {
     val matmul = exec.payload(new Matmul()).asInstanceOf[Matmul]
     val src0 = matmul.src0()
     val src1 = matmul.src1()
@@ -167,14 +203,14 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
       encodeBufferAddr(dst, sem, beats)
     }
 
-    Seq(Encoding.encodeExecute(
+    Lowered(Seq(Encoding.encodeExecute(
       func   = 0,
       mode   = 0,
       size   = beats,
       addrs0 = addrs0,
       addrs1 = addrs1,
       addrd0 = addrd0,
-    ))
+    )), Seq.empty)
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────
