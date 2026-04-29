@@ -175,4 +175,75 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
       */
     }
   }
+
+
+  "End-to-end no arg" in {
+    val testConfig = Configuration.default().copy(sourceWidth = 8)
+    val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize))
+
+    // Phase 1: Build FlatBuffer program
+    //val programBuf = buildMatmulProgram()
+    val inputPath = "/home/karlhk/dtu/Thesis/hardware/ATAN/test/input_8_8x8_no_arg.eaac"
+
+
+    val bytes = Files.readAllBytes(Paths.get(inputPath))
+    val buf = ByteBuffer.wrap(bytes)
+
+    // Phase 2: Assemble into instruction words
+    val assembled = asm.assemble(buf)
+
+    print(PrettyPrinter.prettyPrint(assembled))                                                             
+
+    val fn = assembled.functions.head
+    val insts = fn.instructions
+
+    // Phase 3: Simulate hardware
+    simulate(new ATA8(testConfig)) { dut =>
+      totalCycles = 0L
+
+      // Stream all assembled instructions to the hardware
+      for (inst <- insts) {
+        sendInst(dut, inst)
+      }
+
+      // Feed matrix data (A then B) via AXIST_inData
+      val matrixRows = (0 until n).map(i => packRow(matrix(i).toSeq))
+
+      val execStart = totalCycles
+      //feedLoadData(dut, matrixRows) // matrix A
+      //feedLoadData(dut, matrixRows) // matrix B
+
+      // Collect output from AXIST_out
+      val outputRows = collectStoreData(dut, n)
+      val execEnd = totalCycles
+
+      println(f"[E2E] total cycles     : ${totalCycles}%d")
+      println(f"[E2E] execution cycles : ${execEnd - execStart}%d (first load beat → last store beat)")
+
+
+      val expected = Array(
+                      Array(30, 204, 219, 194, 17, 204, 118, 92), 
+                      Array(156, 46, 27, 203, 233, 83, 186, 128), 
+                      Array(200, 133, 186, 128, 185, 174, 150, 162), 
+                      Array(209, 193, 25, 21, 236, 147, 67, 68), 
+                      Array(212, 144, 72, 17, 154, 76, 60, 204), 
+                      Array(34, 172, 110, 144, 108, 3, 38, 40), 
+                      Array(243, 126, 108, 185, 132, 168, 227, 22), 
+                      Array(63, 29, 13, 62, 192, 239, 149, 22))
+    
+
+      // Phase 4: Verify against golden reference
+      for (row <- 0 until n) {
+        val got = unpackRow(outputRows(row))
+        for (col <- 0 until n) {
+          //assert(got(col) == (expected(row)(col) & 0xFF),
+          //  s"Mismatch at ($row,$col): got ${got(col)}, expected ${expected(row)(col) & 0xFF}")
+          print(f"got ${got(col)} expected ${(expected(row)(col) & 0xFF)}")
+        }
+      }
+
+      //println("[E2E] Output matches golden reference!")
+    }
+  }
+
 }
