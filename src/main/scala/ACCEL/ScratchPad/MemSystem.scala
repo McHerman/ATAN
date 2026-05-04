@@ -44,7 +44,6 @@ class MemSystem(ctrlCfg: Configuration)(implicit mc: MemSystemConfig) extends Mo
   // ── Wire tier-0 external ports ────────────────────────────────────────────
   tiers(0).io.writePorts <> io.tier0WritePorts
   tiers(0).io.readPorts  <> io.tier0ReadPorts
-  tiers(0).io.hostIn     <> io.hostIn
 
   // ── Terminate external ports on non-tier-0 tiers ─────────────────────────
   // Only tier 0 has external access; tiers 1..N-1 have no software-visible
@@ -61,9 +60,31 @@ class MemSystem(ctrlCfg: Configuration)(implicit mc: MemSystemConfig) extends Mo
       port.a.bits  := DontCare
       port.d.ready := false.B
     }
-    tiers(i).io.hostIn.a.valid := false.B
-    tiers(i).io.hostIn.a.bits  := DontCare
-    tiers(i).io.hostIn.d.ready := false.B
+  }
+
+  // ── Host demux: route hostIn to all tiers via TLXbar ─────────────────────
+  // Each tier is mapped to a distinct address region; the xbar demuxes by
+  // address.  We mask the output address so each tier sees local (zero-based)
+  // addresses.
+  val hostDemux = Module(new TLXbar(TLXbarConfig(
+    nMasters = 1,
+    slaves = mc.tiers.indices.map { i =>
+      TLSlaveConfig(
+        addressSet = Seq((mc.tierBases(i), mc.tierSizes(i) - 1))
+      )
+    }
+  )))
+
+  hostDemux.io.in(0) <> io.hostIn
+
+  tiers.zipWithIndex.foreach { case (tier, i) =>
+    tier.io.hostIn.a.valid := hostDemux.io.out(i).a.valid
+    tier.io.hostIn.a.bits  := hostDemux.io.out(i).a.bits
+    // Mask address to local tier space
+    tier.io.hostIn.a.bits.address := hostDemux.io.out(i).a.bits.address & (mc.tierSizes(i) - 1).U
+    hostDemux.io.out(i).a.ready := tier.io.hostIn.a.ready
+
+    tier.io.hostIn.d <> hostDemux.io.out(i).d
   }
 
   // ── Wire DMA interfaces and inter-tier connections ────────────────────────
