@@ -23,48 +23,45 @@ class ACCUFile(val hasDelay: Boolean)(implicit c: Configuration) extends Module 
 
   val moduleArray = Seq.fill(c.dataBusSize)(Module(new BufferFIFO(c.grainFIFOSize, UInt(c.arithDataWidth.W))))
 
-  val ACCUAct = RegInit(VecInit.fill(c.dataBusSize)(0.U(1.W)))
-
+  val ACCUAct    = RegInit(VecInit.fill(c.dataBusSize)(0.U(1.W)))
   val activateIn = Wire(Bool())
-  val ActDReg = RegInit(false.B)
+  val ActDReg    = RegInit(false.B)
 
-  if(hasDelay){
-    ActDReg := io.Activate
+  if (hasDelay) {
+    ActDReg    := io.Activate
     activateIn := ActDReg
-  }else{
+  } else {
     activateIn := io.Activate
   }
 
-  for(i <- 0 until c.dataBusSize){ // TODO: Fix with Foreach loop
-    if(i == 0){
+  // Hold the read port off until every per-row stack has reached `size`,
+  // then fire all of them in lockstep so the parallel readout stays aligned.
+  val allReady = moduleArray.map(_.io.ReadData.request.ready).reduce(_ && _)
+  io.Readport.request.ready := allReady
+
+  val readFire = io.Readport.request.valid && allReady
+  io.Readport.response.valid := readFire
+
+  moduleArray.zipWithIndex.foreach { case (module, i) =>
+    if (i == 0) {
       ACCUAct(0) := activateIn
-    }else{
-      ACCUAct(i) := ACCUAct(i-1)
+    } else {
+      ACCUAct(i) := ACCUAct(i - 1)
     }
 
-    moduleArray(i).io.WriteData.valid := false.B
-    moduleArray(i).io.ReadData.request.valid := false.B
-    moduleArray(i).io.ReadData.request.bits := DontCare
-
-    when(io.Readport.request.valid){
-      moduleArray(i).io.ReadData.request.valid := true.B
-    }
-
-    io.Readport.response.bits.readData(i) := moduleArray(i).io.ReadData.response.bits.readData // FIXME: All this shit sucks
-
-    when(io.size =/= 0.U){
-      switch(io.State){
-        is(0.U){
-          moduleArray(i).io.WriteData.valid := ACCUAct(i)
-        }
-        is(1.U){
-          moduleArray(i).io.WriteData.valid := io.Shift
-        }
+    module.io.WriteData.valid := false.B
+    when(io.size =/= 0.U) {
+      switch(io.State) {
+        is(0.U) { module.io.WriteData.valid := ACCUAct(i) }
+        is(1.U) { module.io.WriteData.valid := io.Shift }
       }
     }
+    module.io.WriteData.bits := io.In(i).Y
 
-    moduleArray(i).io.WriteData.bits := io.In(i).Y
+    module.io.ReadData.request.valid := readFire
+    module.io.ReadData.request.bits  := DontCare
 
+    io.Readport.response.bits.readData(i) := module.io.ReadData.response.bits.readData
   }
 
   io.ActivateOut := ACCUAct.last

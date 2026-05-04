@@ -16,27 +16,28 @@ class XFile(implicit c: Configuration) extends Module {
   })
 
   val moduleArray = Seq.fill(c.dataBusSize)(Module(new BufferFIFO(c.grainFIFOSize, UInt(8.W))))
+
   val XACT = RegInit(VecInit.fill(c.dataBusSize)(0.U(1.W)))
-  
-  for(i <- 0 until c.dataBusSize){
+
+  moduleArray.zipWithIndex.foreach{case (module,i) => 
     if(i == 0){
       XACT(0) := io.Activate
     }else{
       XACT(i) := XACT(i-1)
     }
 
-    moduleArray(i).io.WriteData.valid := io.Memport.valid
-    moduleArray(i).io.WriteData.bits := io.Memport.bits(i)
+    module.io.WriteData.valid := io.Memport.valid
+    module.io.WriteData.bits := io.Memport.bits(i)
     
-    moduleArray(i).io.ReadData.request.valid := false.B
-    moduleArray(i).io.ReadData.request.bits := DontCare
+    module.io.ReadData.request.valid := false.B
+    module.io.ReadData.request.bits := DontCare
 
     when(io.size =/= 0.U){
-      moduleArray(i).io.ReadData.request.valid := XACT(i)
+      module.io.ReadData.request.valid := XACT(i)
     }
 
-    when(moduleArray(i).io.ReadData.request.valid){
-      io.Out(i).X := moduleArray(i).io.ReadData.response.bits.readData
+    when(module.io.ReadData.request.valid){
+      io.Out(i).X := module.io.ReadData.response.bits.readData
     }.otherwise{
       io.Out(i).X := 0.U
     }

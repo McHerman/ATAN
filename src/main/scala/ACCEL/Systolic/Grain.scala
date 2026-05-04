@@ -16,8 +16,7 @@ class Grain(implicit c: Configuration) extends Module {
   val xFiles = Seq.fill(c.grainDim)(Module(new XFile())) 
   val yFiles = Seq.fill(c.grainDim)(Module(new YFile())) 
 
-  val accuFiles = Seq.fill(c.grainDim)(Module(new ACCUFile(false))) 
-
+  val accuFiles = Seq.fill(c.grainDim)(Module(new ACCUFile(false)))
 
   val SysCtrl = Module(new SysCtrl())
 

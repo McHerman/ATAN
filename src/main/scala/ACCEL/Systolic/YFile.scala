@@ -9,8 +9,6 @@ class YFile(implicit c: Configuration) extends Module {
     val Out = Output(Vec(c.dataBusSize, new PEY(c.accDataWidth)))
     val Activate = Input(Bool())
     val ActivateOut = Output(Bool())
-    //val Enable = Input(Bool())
-    //val EnableOut = Output(Bool())
     val Shift = Input(Bool())
 
     val Memport = Flipped(Decoupled(Vec(c.dataBusSize,UInt(8.W)))) //TODO: change name 
@@ -18,50 +16,43 @@ class YFile(implicit c: Configuration) extends Module {
     val size = Input(UInt(log2Ceil(c.dataBusSize + 1).W))
   })
 
-  //io.Memport.ready := true.B
-  //io.Memport.bits.readData := DontCare
  
   val moduleArray = Seq.fill(c.dataBusSize)(Module(new BufferFIFO(c.grainFIFOSize, UInt(8.W))))
 
   val YACT = RegInit(VecInit.fill(c.dataBusSize)(0.U(1.W)))
-  //val YEn = Reg(Vec(c.dataBusSize,UInt(1.W)))
-  
-  for(i <- 0 until c.dataBusSize){
+
+  moduleArray.zipWithIndex.foreach { case (module, i) =>
     if(i == 0){
       YACT(0) := io.Activate
-      //YEn(0) := EnDelayReg
-      //YEn(0) := io.Enable
     }else{
       YACT(i) := YACT(i-1)
-      //YEn(i) := YEn(i-1)
     }
 
-    when(moduleArray(i).io.ReadData.response.valid){
-      io.Out(i).Y := moduleArray(i).io.ReadData.response.bits.readData
+    when(module.io.ReadData.response.valid){
+      io.Out(i).Y := module.io.ReadData.response.bits.readData
     }.otherwise{
       io.Out(i).Y := 0.U
     }
 
-    moduleArray(i).io.WriteData.valid := io.Memport.valid
-    moduleArray(i).io.WriteData.bits := io.Memport.bits(i)
+    module.io.WriteData.valid := io.Memport.valid
+    module.io.WriteData.bits := io.Memport.bits(i)
 
-    moduleArray(i).io.ReadData.request.valid := false.B
-    moduleArray(i).io.ReadData.request.bits := DontCare
+    module.io.ReadData.request.valid := false.B
+    module.io.ReadData.request.bits := DontCare
 
     when(io.size =/= 0.U){
       switch(io.State){
         is(0.U){
-          moduleArray(i).io.ReadData.request.valid := io.Shift
+          module.io.ReadData.request.valid := io.Shift
         }
         is(1.U){
-          moduleArray(i).io.ReadData.request.valid := YACT(i)
+          module.io.ReadData.request.valid := YACT(i)
         }
       }
     }
   }
 
   io.ActivateOut := YACT.last
-  //io.EnableOut := YEn.last
 
   io.Memport.ready := VecInit(moduleArray.map(_.io.WriteData.ready)).reduceTree(_ && _)
 }
