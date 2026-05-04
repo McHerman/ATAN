@@ -61,31 +61,35 @@ table SemDealloc {
 table SemDep {
   /// Hardware semaphore address.
   sem_address: uint16;
-  /// The buffer this dependency guards.
-  buffer: BufferRef;
+  /// Index into the enclosing Function.buffers table.
+  buffer_id: uint32;
 }
 
 /// An asynchronous DMA transfer operation.
+/// Operands are indices into Function.buffers.
 table DmaStart {
-  src: BufferRef;
-  dst: BufferRef;
+  src: uint32;
+  dst: uint32;
 }
 
-/// A load from host to accelerator, replaces function arguments
+/// A load from host to accelerator, replaces function arguments.
+/// Operand is an index into Function.buffers.
 table LoadOp {
-  dst: BufferRef;
+  dst: uint32;
 }
 
-// A store from accelerator to host, replaces function returns
+// A store from accelerator to host, replaces function returns.
+// Operand is an index into Function.buffers.
 table StoreOp {
-  src: BufferRef;
+  src: uint32;
 }
 
 /// A matrix multiplication operation.
+/// Operands are indices into Function.buffers.
 table Matmul {
-  src0: BufferRef;
-  src1: BufferRef;
-  dst: BufferRef;
+  src0: uint32;
+  src1: uint32;
+  dst: uint32;
 }
 
 /// The payload of an execute block.
@@ -101,14 +105,14 @@ table Execute {
   payload: ExecutePayload;
 }
 
-/// A memory allocation.
+/// A memory allocation. Operand is an index into Function.buffers.
 table MemAlloc {
-  buffer: BufferRef;
+  buffer_id: uint32;
 }
 
-/// A memory deallocation.
+/// A memory deallocation. Operand is an index into Function.buffers.
 table MemDealloc {
-  buffer: BufferRef;
+  buffer_id: uint32;
 }
 
 /// Top-level command — the operations appear in program order.
@@ -122,7 +126,9 @@ table Operation {
 table Function {
   name: string;
 
-  /// Removed args and results
+  /// Distinct buffers referenced by this function. Commands and SemDeps
+  /// reference entries here by their index (buffer_id / src / dst / ...).
+  buffers: [BufferRef];
 
   /// Operations in program order.
   ops: [Operation];
