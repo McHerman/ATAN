@@ -18,7 +18,14 @@ object PrettyPrinter {
   def extractField(inst: BigInt, field: Field): BigInt =
     (inst >> field.startBit) & ((BigInt(1) << field.width) - 1)
 
-  def formatAddrPkg(value: BigInt): String = {
+  /** Whether an addrPkg field is a source (acquire/wait) or destination (release/signal). */
+  private val addrPkgRole: Map[String, String] = Map(
+    "addrs0" -> "acquire",
+    "addrs1" -> "acquire",
+    "addrd0" -> "release",
+  )
+
+  def formatAddrPkg(value: BigInt, fieldName: String = ""): String = {
     val addr     = extractField(value, AddrPkg.addr)
     val semV     = extractField(value, AddrPkg.semValid)
     val semA     = extractField(value, AddrPkg.semAddr)
@@ -28,7 +35,9 @@ object PrettyPrinter {
     val sb = new StringBuilder
     sb ++= f"addr=0x${addr}%04x"
     if (semV != 0) {
+      val role = addrPkgRole.getOrElse(fieldName, "")
       sb ++= f", sem=$semA%d"
+      if (role.nonEmpty) sb ++= s" ($role)"
       if (stepV != 0) sb ++= f", step=$stepSize%d"
     }
     sb.result()
@@ -45,7 +54,7 @@ object PrettyPrinter {
       case f if f.name == "opcode" => None
       case f if isAddrPkgField(f) =>
         val raw = extractField(inst, f)
-        Some(s"${f.name}={${formatAddrPkg(raw)}}")
+        Some(s"${f.name}={${formatAddrPkg(raw, f.name)}}")
       case f =>
         val v = extractField(inst, f)
         Some(f"${f.name}=${v}%d")

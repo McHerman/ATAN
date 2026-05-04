@@ -10,6 +10,8 @@ import scala.collection.mutable.ArrayBuffer
 case class AssemblerConfig(
   /** Bytes per data bus beat (default 8 for 64-bit AXI). */
   dataBusBytes: Int = 8,
+  /** Number of memory tiers in the hardware (used to map FB tier numbering to hardware tier indices). */
+  nTiers: Int = 3,
 )
 
 object AssemblerConfig {
@@ -62,22 +64,22 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
   }
 
   private def assembleFunction(fn: eaac_fb.Function, const: Seq[eaac_fb.Constant]): AssembledFunction = {
+    val buffers = (0 until fn.buffersLength()).map(fn.buffers(_))
     val instructions = new ArrayBuffer[BigInt]()
     val preloads = new ArrayBuffer[Preload]()
     for (i <- 0 until fn.opsLength()) {
-      val lowered = lowerCommand(fn.ops(i), const)
+      val lowered = lowerCommand(fn.ops(i), buffers, const)
       instructions ++= lowered.instructions
       preloads ++= lowered.preloads
     }
     AssembledFunction(fn.name(), instructions.toSeq, preloads.toSeq)
   }
 
-  private def lowerCommand(op: Operation, const: Seq[eaac_fb.Constant]): Lowered = op.commandType() match {
+  private def lowerCommand(op: Operation, buffers: Seq[BufferRef], const: Seq[eaac_fb.Constant]): Lowered = op.commandType() match {
     case Command.SemAlloc   => lowerSemAlloc(op)
     case Command.SemDealloc => lowerSemDealloc(op)
-    case Command.Execute    => lowerExecute(op)
-    //case Command.MemAlloc   => Seq.empty
-    case Command.MemAlloc   => lowerMemoryAlloc(op,const) 
+    case Command.Execute    => lowerExecute(op, buffers)
+    case Command.MemAlloc   => lowerMemoryAlloc(op, buffers, const)
     case Command.MemDealloc => Lowered(Seq.empty, Seq.empty)
     case other => throw new IllegalArgumentException(s"Unknown command type: $other")
   }
@@ -85,10 +87,10 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
   // ── SemAlloc / SemDealloc ─────────────────────────────────────────────
 
   // Doesnt get lowered into a instruction, but rather a host preload
-  private def lowerMemoryAlloc(op: Operation, const: Seq[eaac_fb.Constant]): Lowered = {
+  private def lowerMemoryAlloc(op: Operation, buffers: Seq[BufferRef], const: Seq[eaac_fb.Constant]): Lowered = {
 
     val alloc = op.command(new MemAlloc()).asInstanceOf[MemAlloc]
-    val buf = alloc.buffer()
+    val buf = buffers(alloc.bufferId().toInt)
     val constantName = buf.constantName()
 
     if (constantName == null) return Lowered(Seq.empty, Seq.empty)
@@ -123,24 +125,26 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
 
   // ── Execute (DMA or Compute) ──────────────────────────────────────────
 
-  private def lowerExecute(op: Operation): Lowered = {
+  private def lowerExecute(op: Operation, buffers: Seq[BufferRef]): Lowered = {
     val exec = op.command(new Execute()).asInstanceOf[Execute]
     exec.payloadType() match {
-      case ExecutePayload.DmaStart => lowerDmaPayload(exec)
-      case ExecutePayload.LoadOp  => lowerLoadPayload(exec)
-      case ExecutePayload.StoreOp => lowerStorePayload(exec)
-      case ExecutePayload.Matmul   => lowerMatmulPayload(exec)
+      case ExecutePayload.DmaStart => lowerDmaPayload(exec, buffers)
+      case ExecutePayload.LoadOp  => lowerLoadPayload(exec, buffers)
+      case ExecutePayload.StoreOp => lowerStorePayload(exec, buffers)
+      case ExecutePayload.Matmul   => lowerMatmulPayload(exec, buffers)
       case other => throw new IllegalArgumentException(s"Unknown execute payload type: $other")
     }
   }
 
-  private def lowerDmaPayload(exec: Execute): Lowered = {
+  private def lowerDmaPayload(exec: Execute, buffers: Seq[BufferRef]): Lowered = {
     val dma = exec.payload(new DmaStart()).asInstanceOf[DmaStart]
-    val src = dma.src()
-    val dst = dma.dst()
+    val srcId = dma.src().toInt
+    val dstId = dma.dst().toInt
+    val src = buffers(srcId)
+    val dst = buffers(dstId)
 
-    val srcSem = findSemForBuffer(exec, isAcquire = true, src)
-    val dstSem = findSemForBuffer(exec, isAcquire = false, dst)
+    val srcSem = findSemForBuffer(exec, isAcquire = false, srcId)
+    val dstSem = findSemForBuffer(exec, isAcquire = true, dstId)
     val beats = bufferBeats(src)
 
     Lowered(Seq(Encoding.encodeDMA(
@@ -151,11 +155,13 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     )), Seq.empty)
   }
 
-  private def lowerLoadPayload(exec: Execute): Lowered = {
+  private def lowerLoadPayload(exec: Execute, buffers: Seq[BufferRef]): Lowered = {
     val load = exec.payload(new LoadOp()).asInstanceOf[LoadOp]
-    val dst = load.dst()
+    val dstId = load.dst().toInt
+    val dst = buffers(dstId)
 
-    val dstSem = findSemForBuffer(exec, isAcquire = false, dst)
+    // Acquire means that the give command produces data
+    val dstSem = findSemForBuffer(exec, isAcquire = true, dstId)
     val beats = bufferBeats(dst)
 
     Lowered(Seq(Encoding.encodeLoad(
@@ -166,11 +172,19 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     )), Seq.empty)
   }
 
-  private def lowerStorePayload(exec: Execute): Lowered = {
+  private def lowerStorePayload(exec: Execute, buffers: Seq[BufferRef]): Lowered = {
     val store = exec.payload(new StoreOp()).asInstanceOf[StoreOp]
-    val src = store.src()
+    val srcId = store.src().toInt
+    val src = buffers(srcId)
 
-    val srcSem = findSemForBuffer(exec, isAcquire = true, src)
+    println(f"store buffer, src_id: ${srcId}")
+
+    val srcSem = findSemForBuffer(exec, isAcquire = false, srcId)
+
+    //println(f"buffer ${src.id.toInt}")
+
+    println(f"store semaphore, id: ${srcSem}")
+
     val beats = bufferBeats(src)
 
     Lowered(Seq(Encoding.encodeStore(
@@ -180,26 +194,29 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     )), Seq.empty)
   }
 
-  private def lowerMatmulPayload(exec: Execute): Lowered = {
+  private def lowerMatmulPayload(exec: Execute, buffers: Seq[BufferRef]): Lowered = {
     val matmul = exec.payload(new Matmul()).asInstanceOf[Matmul]
-    val src0 = matmul.src0()
-    val src1 = matmul.src1()
-    val dst  = matmul.dst()
+    val src0Id = matmul.src0().toInt
+    val src1Id = matmul.src1().toInt
+    val dstId  = matmul.dst().toInt
+    val src0 = buffers(src0Id)
+    val src1 = buffers(src1Id)
+    val dst  = buffers(dstId)
 
     val beats = bufferBeats(dst)
 
     val addrs0 = {
-      val sem = findSemForBuffer(exec, isAcquire = false, src0)
+      val sem = findSemForBuffer(exec, isAcquire = false, src0Id)
       encodeBufferAddr(src0, sem, bufferBeats(src0))
     }
 
     val addrs1 = {
-      val sem = findSemForBuffer(exec, isAcquire = false, src1)
+      val sem = findSemForBuffer(exec, isAcquire = false, src1Id)
       encodeBufferAddr(src1, sem, bufferBeats(src1))
     }
 
     val addrd0 = {
-      val sem = findSemForBuffer(exec, isAcquire = true, dst)
+      val sem = findSemForBuffer(exec, isAcquire = true, dstId)
       encodeBufferAddr(dst, sem, beats)
     }
 
@@ -215,18 +232,15 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
 
   // ── Helpers ───────────────────────────────────────────────────────────
 
-  /** Encode a BufferRef's offset as an addrPkg BigInt with optional semaphore.
-    * @param semDep Some((semByteAddr, bankIdx)) or None
-    * @param stepSize number of beats for semaphore step
-    */
-  private def encodeBufferAddr(buf: BufferRef, semDep: Option[(Int, Int)], stepSize: Int): BigInt = {
+  /** Encode a BufferRef's offset as an addrPkg BigInt with optional semaphore. */
+  private def encodeBufferAddr(buf: BufferRef, semAddr: Option[Int], stepSize: Int): BigInt = {
     val offset16 = (buf.offset() & 0xFFFF).toInt
-    semDep match {
-      case Some((semByteAddr, _)) =>
+    semAddr match {
+      case Some(addr) =>
         AddrPkg.encode(
           addr          = offset16,
           semValid      = true,
-          semAddr       = semByteAddr,
+          semAddr       = addr,
           stepSizeValid = true,
           stepSize      = stepSize,
         )
@@ -235,24 +249,26 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     }
   }
 
-  /** Find a semaphore dependency that guards a buffer, searching either
-    * acquires (producer-side) or requires (consumer-side).
-    * Returns Some((bankIndex, 0)) or None.
+  /** Find a semaphore dependency that guards a buffer by index, searching
+    * either acquires (producer-side) or requires (consumer-side).
     */
   private def findSemForBuffer(
     exec: Execute,
     isAcquire: Boolean,
-    buf: BufferRef,
-  ): Option[(Int, Int)] = {
-    if (buf == null) return None
+    bufferId: Int,
+  ): Option[Int] = {
     val count = if (isAcquire) exec.acquiresLength() else exec.requiresLength()
     val getDep = if (isAcquire) exec.acquires(_: Int) else exec.requires(_: Int)
 
     for (i <- 0 until count) {
       val dep = getDep(i)
-      val depBuf = dep.buffer()
-      if (depBuf != null && depBuf.offset() == buf.offset() && depBuf.tier() == buf.tier())
-        return Some((dep.semAddress(), 0))
+      print(f"${dep.semAddress()}")
+
+      // To ensure that the producer and consumer doesnt request the same memory port
+      val offset = if (isAcquire) 0 else 2 
+
+      if (dep.bufferId() == bufferId)
+        return Some(dep.semAddress() + offset)
     }
     None
   }
