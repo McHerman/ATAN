@@ -59,6 +59,11 @@ object assembler extends SbtModule {
 
   override def ivyDeps = Agg(
     ivy"com.google.flatbuffers:flatbuffers-java:25.2.10",
+
+    // Circe
+    ivy"io.circe::circe-core:0.14.6",
+    ivy"io.circe::circe-generic:0.14.6",
+    ivy"io.circe::circe-parser:0.14.6"
   )
 
   object test extends SbtTests with TestModule.ScalaTest {

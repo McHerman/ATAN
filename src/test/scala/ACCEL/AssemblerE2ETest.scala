@@ -9,6 +9,10 @@ import java.nio.ByteBuffer
 import java.nio.file.{Files, Paths}
 import org.scalatest.freespec.AnyFreeSpec
 import org.scalatest.matchers.must.Matchers
+import scala.io.Source
+
+import io.circe.generic.auto._
+import io.circe.parser._
 
 /** End-to-end test: build a FlatBuffer program, assemble it into
   * 128-bit instructions, stream them into the ATA8 hardware, feed
@@ -140,98 +144,6 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     stepN(dut.clock)
   }
 
-  /*
-
-
-  // ── FlatBuffer program construction ───────────────────────────────────
-
-  /** Build a FlatBuffer program that performs: C = matmul(A, B)
-    *
-    * Memory layout (local SRAM, tier 3):
-    *   A @ offset 0x00, shape [n, n], I8
-    *   B @ offset n*n,   shape [n, n], I8
-    *   C @ offset 2*n*n, shape [n, n], I8
-    *
-    * Semaphore layout:
-    *   sem 0: Load(A) → Execute (consumer on A)
-    *   sem 1: Load(B) → Execute (consumer on B)
-    *   sem 2: Execute → Store (producer of C)
-    */
-
-  // ── Tests ─────────────────────────────────────────────────────────────
-
-  "End-to-end: FlatBuffer matmul program assembled and executed on ATA8 hardware" in {
-    val testConfig = Configuration.default().copy(sourceWidth = 8)
-    val msCfg = MemSystemConfig.default().copy(sourceWidth = testConfig.sourceWidth)
-    val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize))
-
-    // Phase 1: Build FlatBuffer program
-    //val programBuf = buildMatmulProgram()
-    val inputPath = "/home/karlhk/dtu/Thesis/hardware/ATAN/test/input_8_8x8.eaac"
-
-
-    val bytes = Files.readAllBytes(Paths.get(inputPath))
-    val buf = ByteBuffer.wrap(bytes)
-
-    // Phase 2: Assemble into instruction words
-    val assembled = asm.assemble(buf)
-
-    print(PrettyPrinter.prettyPrint(assembled))
-
-    val fn = assembled.functions.head
-    val insts = fn.instructions
-
-    /*
-    println(s"[E2E] Function '${fn.name}': ${insts.length} instructions")
-    for ((inst, i) <- insts.zipWithIndex)
-      println(f"[E2E]   [$i%2d] 0x${inst}%032x")
-    */
-
-    // Phase 3: Simulate hardware
-    simulate(new ATA8(testConfig)) { dut =>
-      totalCycles = 0L
-
-      // Preload memory for each preload entry
-      fn.preloads.foreach { preload =>
-        preloadMem(dut, preload, msCfg)
-      }
-
-      // Stream all assembled instructions to the hardware
-      for (inst <- insts) {
-        sendInst(dut, inst)
-      }
-
-      // Feed matrix data (A then B) via AXIST_inData
-      val matrixRows = (0 until n).map(i => packRow(matrix(i).toSeq))
-
-      val execStart = totalCycles
-      feedLoadData(dut, matrixRows) // matrix A
-      feedLoadData(dut, matrixRows) // matrix B
-
-      // Collect output from AXIST_out
-      val outputRows = collectStoreData(dut, n)
-      val execEnd = totalCycles
-
-      println(f"[E2E] total cycles     : ${totalCycles}%d")
-      println(f"[E2E] execution cycles : ${execEnd - execStart}%d (first load beat → last store beat)")
-
-      /*
-      // Phase 4: Verify against golden reference
-      val expected = matrixDotProduct(matrix, matrix)
-      for (row <- 0 until n) {
-        val got = unpackRow(outputRows(row))
-        for (col <- 0 until n) {
-          assert(got(col) == (expected(row)(col) & 0xFF),
-            s"Mismatch at ($row,$col): got ${got(col)}, expected ${expected(row)(col) & 0xFF}")
-        }
-      }
-
-      println("[E2E] Output matches golden reference!")
-      */
-    }
-  }
-  */
-
 
   "End-to-end no arg" in {
     val testConfig = Configuration.default().copy(sourceWidth = 8)
@@ -258,6 +170,31 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
       println(f"Preload to address: ${preload.offsetAddress}, tier: ${preload.tier}")
     }
 
+
+    ////////// Reference import //////////
+
+    case class Tensor(shape: Seq[Int], element_type: String, data: Seq[Int])
+    case class ModelIO(inputs: Seq[Tensor], outputs: Seq[Tensor])
+
+    val jsonStr = Source.fromFile("/home/karlhk/dtu/Thesis/hardware/ATAN/test/input_8_8x8_no_arg.reference.json").mkString
+    
+    val parsed = for {
+      json <- parse(jsonStr)
+      model <- json.as[ModelIO]
+    } yield model
+
+    val inputArrays: Seq[Seq[Int]] =
+      parsed.toOption.get.inputs.map(_.data)
+    
+    val outputArrays: Seq[Seq[Int]] =
+      parsed.toOption.get.outputs.map(_.data)
+
+    //val inputsWithShape =
+    //  parsed.inputs.map(t => (t.shape, t.data))
+    //
+    //val outputsWithShape =
+    //  parsed.outputs.map(t => (t.shape, t.data))
+
     // Phase 3: Simulate hardware
     simulate(new ATA8(testConfig)) { dut =>
       totalCycles = 0L
@@ -286,7 +223,7 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
       println(f"[E2E] total cycles     : ${totalCycles}%d")
       println(f"[E2E] execution cycles : ${execEnd - execStart}%d (first load beat → last store beat)")
 
-
+      /*
       val expected = Array(
                       Array(30, 204, 219, 194, 17, 204, 118, 92), 
                       Array(156, 46, 27, 203, 233, 83, 186, 128), 
@@ -296,7 +233,8 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
                       Array(34, 172, 110, 144, 108, 3, 38, 40), 
                       Array(243, 126, 108, 185, 132, 168, 227, 22), 
                       Array(63, 29, 13, 62, 192, 239, 149, 22))
-    
+      */
+
 
       // Phase 4: Verify against golden reference
 
@@ -306,398 +244,19 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
       for (row <- 0 until n) {
         val got = unpackRow(outputRows(row))
         for (col <- 0 until n) {
-          assert(got(col) == (expected((n - 1) - row)(col) & 0xFF),
-            s"Mismatch at ($row,$col): got ${got(col)}, expected ${expected((n - 1) - row)(col) & 0xFF}")
+          //assert(got(col) == (expected((n - 1) - row)(col) & 0xFF),
+          //  s"Mismatch at ($row,$col): got ${got(col)}, expected ${expected((n - 1) - row)(col) & 0xFF}")
           //print(f"got ${got(col)} expected ${(expected((n - 1) - row)(col) & 0xFF)}")
+
+
+
+          assert(got(col) == (outputArrays(0)(((n - 1) - row) * n + col)),
+            s"Mismatch at ($row,$col): got ${got(col)}, expected ${outputArrays(0)(((n - 1) - row) * n + col)}")
         }
       }
 
       //println("[E2E] Output matches golden reference!")
     }
   }
-  /*
-
-  "End-to-end no arg identity" in {
-    val testConfig = Configuration.default().copy(sourceWidth = 8)
-    val msCfg = MemSystemConfig.default().copy(sourceWidth = testConfig.sourceWidth)
-    val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize))
-
-    // Phase 1: Build FlatBuffer program
-    //val programBuf = buildMatmulProgram()
-    val inputPath = "/home/karlhk/dtu/Thesis/hardware/ATAN/test/diag_identity_unique.eaac"
-
-
-    val bytes = Files.readAllBytes(Paths.get(inputPath))
-    val buf = ByteBuffer.wrap(bytes)
-
-    // Phase 2: Assemble into instruction words
-    val assembled = asm.assemble(buf)
-
-    println(PrettyPrinter.prettyPrint(assembled))
-
-    val fn = assembled.functions.head
-    val insts = fn.instructions
-
-    fn.preloads.foreach { preload =>
-      println(f"Preload to address: ${preload.offsetAddress}, tier: ${preload.tier}")
-    }
-
-    // Phase 3: Simulate hardware
-    simulate(new ATA8(testConfig)) { dut =>
-      totalCycles = 0L
-
-      // Preload memory for each preload entry
-      fn.preloads.foreach { preload =>
-        preloadMem(dut, preload, msCfg)
-      }
-
-      // Stream all assembled instructions to the hardware
-      for (inst <- insts) {
-        sendInst(dut, inst)
-      }
-
-      // Feed matrix data (A then B) via AXIST_inData
-      val matrixRows = (0 until n).map(i => packRow(matrix(i).toSeq))
-
-      val execStart = totalCycles
-      //feedLoadData(dut, matrixRows) // matrix A
-      //feedLoadData(dut, matrixRows) // matrix B
-
-      // Collect output from AXIST_out
-      val outputRows = collectStoreData(dut, n)
-      val execEnd = totalCycles
-
-      println(f"[E2E] total cycles     : ${totalCycles}%d")
-      println(f"[E2E] execution cycles : ${execEnd - execStart}%d (first load beat → last store beat)")
-
-
-      //val expected = Array(
-      //                Array(30, 204, 219, 194, 17, 204, 118, 92), 
-      //                Array(156, 46, 27, 203, 233, 83, 186, 128), 
-      //                Array(200, 133, 186, 128, 185, 174, 150, 162), 
-      //                Array(209, 193, 25, 21, 236, 147, 67, 68), 
-      //                Array(212, 144, 72, 17, 154, 76, 60, 204), 
-      //                Array(34, 172, 110, 144, 108, 3, 38, 40), 
-      //                Array(243, 126, 108, 185, 132, 168, 227, 22), 
-      //                Array(63, 29, 13, 62, 192, 239, 149, 22))
-    
-
-      // Phase 4: Verify against golden reference
-      for (row <- 0 until n) {
-        val got = unpackRow(outputRows(row))
-        for (col <- 0 until n) {
-          print(f"${got(col)}, }")
-        }
-      }
-
-    }
-  }
-
-  "End-to-end no arg ones" in {
-    val testConfig = Configuration.default().copy(sourceWidth = 8)
-    val msCfg = MemSystemConfig.default().copy(sourceWidth = testConfig.sourceWidth)
-    val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize))
-
-    // Phase 1: Build FlatBuffer program
-    //val programBuf = buildMatmulProgram()
-    val inputPath = "/home/karlhk/dtu/Thesis/hardware/ATAN/test/diag_ones.eaac"
-
-
-    val bytes = Files.readAllBytes(Paths.get(inputPath))
-    val buf = ByteBuffer.wrap(bytes)
-
-    // Phase 2: Assemble into instruction words
-    val assembled = asm.assemble(buf)
-
-    println(PrettyPrinter.prettyPrint(assembled))
-
-    val fn = assembled.functions.head
-    val insts = fn.instructions
-
-    fn.preloads.foreach { preload =>
-      println(f"Preload to address: ${preload.offsetAddress}, tier: ${preload.tier}")
-    }
-
-    // Phase 3: Simulate hardware
-    simulate(new ATA8(testConfig)) { dut =>
-      totalCycles = 0L
-
-      // Preload memory for each preload entry
-      fn.preloads.foreach { preload =>
-        preloadMem(dut, preload, msCfg)
-      }
-
-      // Stream all assembled instructions to the hardware
-      for (inst <- insts) {
-        sendInst(dut, inst)
-      }
-
-      // Feed matrix data (A then B) via AXIST_inData
-      val matrixRows = (0 until n).map(i => packRow(matrix(i).toSeq))
-
-      val execStart = totalCycles
-      //feedLoadData(dut, matrixRows) // matrix A
-      //feedLoadData(dut, matrixRows) // matrix B
-
-      // Collect output from AXIST_out
-      val outputRows = collectStoreData(dut, n)
-      val execEnd = totalCycles
-
-      println(f"[E2E] total cycles     : ${totalCycles}%d")
-      println(f"[E2E] execution cycles : ${execEnd - execStart}%d (first load beat → last store beat)")
-
-
-      //val expected = Array(
-      //                Array(30, 204, 219, 194, 17, 204, 118, 92), 
-      //                Array(156, 46, 27, 203, 233, 83, 186, 128), 
-      //                Array(200, 133, 186, 128, 185, 174, 150, 162), 
-      //                Array(209, 193, 25, 21, 236, 147, 67, 68), 
-      //                Array(212, 144, 72, 17, 154, 76, 60, 204), 
-      //                Array(34, 172, 110, 144, 108, 3, 38, 40), 
-      //                Array(243, 126, 108, 185, 132, 168, 227, 22), 
-      //                Array(63, 29, 13, 62, 192, 239, 149, 22))
-    
-
-      // Phase 4: Verify against golden reference
-      for (row <- 0 until n) {
-        val got = unpackRow(outputRows(row))
-        for (col <- 0 until n) {
-          print(f"${got(col)}, }")
-        }
-      }
-
-    }
-  }
-
-  "End-to-end no arg wrap" in {
-    val testConfig = Configuration.default().copy(sourceWidth = 8)
-    val msCfg = MemSystemConfig.default().copy(sourceWidth = testConfig.sourceWidth)
-    val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize))
-
-    // Phase 1: Build FlatBuffer program
-    //val programBuf = buildMatmulProgram()
-    val inputPath = "/home/karlhk/dtu/Thesis/hardware/ATAN/test/diag_wrap.eaac"
-
-
-    val bytes = Files.readAllBytes(Paths.get(inputPath))
-    val buf = ByteBuffer.wrap(bytes)
-
-    // Phase 2: Assemble into instruction words
-    val assembled = asm.assemble(buf)
-
-    println(PrettyPrinter.prettyPrint(assembled))
-
-    val fn = assembled.functions.head
-    val insts = fn.instructions
-
-    fn.preloads.foreach { preload =>
-      println(f"Preload to address: ${preload.offsetAddress}, tier: ${preload.tier}")
-    }
-
-    // Phase 3: Simulate hardware
-    simulate(new ATA8(testConfig)) { dut =>
-      totalCycles = 0L
-
-      // Preload memory for each preload entry
-      fn.preloads.foreach { preload =>
-        preloadMem(dut, preload, msCfg)
-      }
-
-      // Stream all assembled instructions to the hardware
-      for (inst <- insts) {
-        sendInst(dut, inst)
-      }
-
-      // Feed matrix data (A then B) via AXIST_inData
-      val matrixRows = (0 until n).map(i => packRow(matrix(i).toSeq))
-
-      val execStart = totalCycles
-      //feedLoadData(dut, matrixRows) // matrix A
-      //feedLoadData(dut, matrixRows) // matrix B
-
-      // Collect output from AXIST_out
-      val outputRows = collectStoreData(dut, n)
-      val execEnd = totalCycles
-
-      println(f"[E2E] total cycles     : ${totalCycles}%d")
-      println(f"[E2E] execution cycles : ${execEnd - execStart}%d (first load beat → last store beat)")
-
-
-      //val expected = Array(
-      //                Array(30, 204, 219, 194, 17, 204, 118, 92), 
-      //                Array(156, 46, 27, 203, 233, 83, 186, 128), 
-      //                Array(200, 133, 186, 128, 185, 174, 150, 162), 
-      //                Array(209, 193, 25, 21, 236, 147, 67, 68), 
-      //                Array(212, 144, 72, 17, 154, 76, 60, 204), 
-      //                Array(34, 172, 110, 144, 108, 3, 38, 40), 
-      //                Array(243, 126, 108, 185, 132, 168, 227, 22), 
-      //                Array(63, 29, 13, 62, 192, 239, 149, 22))
-    
-
-      // Phase 4: Verify against golden reference
-      for (row <- 0 until n) {
-        val got = unpackRow(outputRows(row))
-        for (col <- 0 until n) {
-          print(f"${got(col)}, }")
-        }
-      }
-
-    }
-  }
-
-  "End-to-end no arg random iden" in {
-    val testConfig = Configuration.default().copy(sourceWidth = 8)
-    val msCfg = MemSystemConfig.default().copy(sourceWidth = testConfig.sourceWidth)
-    val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize))
-
-    // Phase 1: Build FlatBuffer program
-    //val programBuf = buildMatmulProgram()
-    val inputPath = "/home/karlhk/dtu/Thesis/hardware/ATAN/test/diag_identity_random.eaac"
-
-
-    val bytes = Files.readAllBytes(Paths.get(inputPath))
-    val buf = ByteBuffer.wrap(bytes)
-
-    // Phase 2: Assemble into instruction words
-    val assembled = asm.assemble(buf)
-
-    println(PrettyPrinter.prettyPrint(assembled))
-
-    val fn = assembled.functions.head
-    val insts = fn.instructions
-
-    fn.preloads.foreach { preload =>
-      println(f"Preload to address: ${preload.offsetAddress}, tier: ${preload.tier}")
-    }
-
-    // Phase 3: Simulate hardware
-    simulate(new ATA8(testConfig)) { dut =>
-      totalCycles = 0L
-
-      // Preload memory for each preload entry
-      fn.preloads.foreach { preload =>
-        preloadMem(dut, preload, msCfg)
-      }
-
-      // Stream all assembled instructions to the hardware
-      for (inst <- insts) {
-        sendInst(dut, inst)
-      }
-
-      // Feed matrix data (A then B) via AXIST_inData
-      val matrixRows = (0 until n).map(i => packRow(matrix(i).toSeq))
-
-      val execStart = totalCycles
-      //feedLoadData(dut, matrixRows) // matrix A
-      //feedLoadData(dut, matrixRows) // matrix B
-
-      // Collect output from AXIST_out
-      val outputRows = collectStoreData(dut, n)
-      val execEnd = totalCycles
-
-      println(f"[E2E] total cycles     : ${totalCycles}%d")
-      println(f"[E2E] execution cycles : ${execEnd - execStart}%d (first load beat → last store beat)")
-
-
-      //val expected = Array(
-      //                Array(30, 204, 219, 194, 17, 204, 118, 92), 
-      //                Array(156, 46, 27, 203, 233, 83, 186, 128), 
-      //                Array(200, 133, 186, 128, 185, 174, 150, 162), 
-      //                Array(209, 193, 25, 21, 236, 147, 67, 68), 
-      //                Array(212, 144, 72, 17, 154, 76, 60, 204), 
-      //                Array(34, 172, 110, 144, 108, 3, 38, 40), 
-      //                Array(243, 126, 108, 185, 132, 168, 227, 22), 
-      //                Array(63, 29, 13, 62, 192, 239, 149, 22))
-    
-
-      // Phase 4: Verify against golden reference
-      for (row <- 0 until n) {
-        val got = unpackRow(outputRows(row))
-        for (col <- 0 until n) {
-          print(f"${got(col)}, }")
-        }
-      }
-
-    }
-  }
-
-
-
-  "End-to-end diag_random_identity" in {
-    val testConfig = Configuration.default().copy(sourceWidth = 8)
-    val msCfg = MemSystemConfig.default().copy(sourceWidth = testConfig.sourceWidth)
-    val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize))
-
-    // Phase 1: Build FlatBuffer program
-    //val programBuf = buildMatmulProgram()
-    val inputPath = "/home/karlhk/dtu/Thesis/hardware/ATAN/test/diag_random_identity.eaac"
-
-
-    val bytes = Files.readAllBytes(Paths.get(inputPath))
-    val buf = ByteBuffer.wrap(bytes)
-
-    // Phase 2: Assemble into instruction words
-    val assembled = asm.assemble(buf)
-
-    println(PrettyPrinter.prettyPrint(assembled))
-
-    val fn = assembled.functions.head
-    val insts = fn.instructions
-
-    fn.preloads.foreach { preload =>
-      println(f"Preload to address: ${preload.offsetAddress}, tier: ${preload.tier}")
-    }
-
-    // Phase 3: Simulate hardware
-    simulate(new ATA8(testConfig)) { dut =>
-      totalCycles = 0L
-
-      // Preload memory for each preload entry
-      fn.preloads.foreach { preload =>
-        preloadMem(dut, preload, msCfg)
-      }
-
-      // Stream all assembled instructions to the hardware
-      for (inst <- insts) {
-        sendInst(dut, inst)
-      }
-
-      // Feed matrix data (A then B) via AXIST_inData
-      val matrixRows = (0 until n).map(i => packRow(matrix(i).toSeq))
-
-      val execStart = totalCycles
-      //feedLoadData(dut, matrixRows) // matrix A
-      //feedLoadData(dut, matrixRows) // matrix B
-
-      // Collect output from AXIST_out
-      val outputRows = collectStoreData(dut, n)
-      val execEnd = totalCycles
-
-      println(f"[E2E] total cycles     : ${totalCycles}%d")
-      println(f"[E2E] execution cycles : ${execEnd - execStart}%d (first load beat → last store beat)")
-
-
-      //val expected = Array(
-      //                Array(30, 204, 219, 194, 17, 204, 118, 92), 
-      //                Array(156, 46, 27, 203, 233, 83, 186, 128), 
-      //                Array(200, 133, 186, 128, 185, 174, 150, 162), 
-      //                Array(209, 193, 25, 21, 236, 147, 67, 68), 
-      //                Array(212, 144, 72, 17, 154, 76, 60, 204), 
-      //                Array(34, 172, 110, 144, 108, 3, 38, 40), 
-      //                Array(243, 126, 108, 185, 132, 168, 227, 22), 
-      //                Array(63, 29, 13, 62, 192, 239, 149, 22))
-    
-
-      // Phase 4: Verify against golden reference
-      for (row <- 0 until n) {
-        val got = unpackRow(outputRows(row))
-        for (col <- 0 until n) {
-          print(f"${got(col)}, }")
-        }
-      }
-
-    }
-  }
-  */
 
 }
