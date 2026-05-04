@@ -84,6 +84,32 @@ class MemSystemDUT(msCfg: MemSystemConfig, bankCfg: Configuration) extends Modul
 }
 
 
+class HostInDUT(msCfg: MemSystemConfig, bankCfg: Configuration) extends Module {
+  private val nDMAs = msCfg.tiers.length - 1
+
+  val memSys  = Module(new MemSystem(bankCfg)(msCfg))
+  val semBank = Module(new SemaphoreBank(nDMAs * 2)(bankCfg))
+
+  for (i <- 0 until nDMAs) {
+    semBank.io.inPorts(i * 2)     <> memSys.io.semaphoreA(i)
+    semBank.io.inPorts(i * 2 + 1) <> memSys.io.semaphoreB(i)
+  }
+
+  val io = IO(new Bundle {
+    val hostIn               = Flipped(new TilelinkPort()(msCfg))
+    val tier0Write           = Flipped(new TilelinkPort()(msCfg))
+    val tier0Read            = Flipped(new TilelinkPort()(msCfg))
+    val dmaInstructionStream = Flipped(Decoupled(new DMAInst()(bankCfg)))
+    val semProgPort          = Flipped(Decoupled(new SemaphoreProgPort))
+  })
+
+  io.hostIn              <> memSys.io.hostIn
+  io.tier0Write          <> memSys.io.tier0WritePorts(0)
+  io.tier0Read           <> memSys.io.tier0ReadPorts(0)
+  io.dmaInstructionStream <> memSys.io.dmaInstructionStream
+  io.semProgPort         <> semBank.io.progPort
+}
+
 class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   // ── Configuration ──────────────────────────────────────────────────────────
@@ -1078,6 +1104,95 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
         s"  expected: ${testData.map(x => f"0x$x%016x")}\n" +
         s"  got:      ${readback.map(x => f"0x$x%016x")}"
       )
+    }
+  }
+
+  "HostIn demux: write and read back distinct data on each tier" in {
+    simulate(new HostInDUT(msCfg, bankCfg)) { dut =>
+
+      dut.clock.step(2)
+
+      // Distinct 4-beat payloads per tier
+      val tier0Data = Seq(BigInt("AA", 16), BigInt("BB", 16), BigInt("CC", 16), BigInt("DD", 16))
+      val tier1Data = Seq(BigInt("11", 16), BigInt("22", 16), BigInt("33", 16), BigInt("44", 16))
+      val tier2Data = Seq(BigInt("55", 16), BigInt("66", 16), BigInt("77", 16), BigInt("88", 16))
+
+      // Tier bases for this config: each tier is 1024 words (4 banks * 256)
+      val base0 = msCfg.tierBases(0).toInt  // 0x000
+      val base1 = msCfg.tierBases(1).toInt  // 0x400
+      val base2 = msCfg.tierBases(2).toInt  // 0x800
+
+      val hostIn = dut.io.hostIn
+      hostIn.d.ready.poke(true.B)
+
+      // ── Helper: burst-write N beats via hostIn at a global address ────────
+      // Drive valid+bits first, then wait for ready (TLSplitter only asserts
+      // ready once it sees a valid request with a known opcode).
+      def hostWrite(baseAddr: Int, data: Seq[BigInt]): Unit = {
+        for ((beat, i) <- data.zipWithIndex) {
+          hostIn.a.valid.poke(true.B)
+          hostIn.a.bits.opcode.poke(TilelinkOpcodes.PutFullData)
+          hostIn.a.bits.param.poke(0.U)
+          hostIn.a.bits.size.poke(data.length.U)
+          hostIn.a.bits.source.poke(0.U)
+          hostIn.a.bits.address.poke(baseAddr.U)
+          hostIn.a.bits.mask.poke(0xFF.U)
+          hostIn.a.bits.data.poke(beat.U)
+          hostIn.a.bits.corrupt.poke(0.U)
+          waitFor(dut)(hostIn.a.ready.peek().litToBoolean, s"hostIn.a.ready write beat $i @ 0x${baseAddr.toHexString}")
+          dut.clock.step()
+        }
+        hostIn.a.valid.poke(false.B)
+
+        waitFor(dut)(hostIn.d.valid.peek().litToBoolean, s"hostIn AccessAck @ 0x${baseAddr.toHexString}")
+        hostIn.d.bits.opcode.expect(TilelinkOpcodes.AccessAck)
+        dut.clock.step()
+      }
+
+      // ── Helper: burst-read N beats via hostIn from a global address ───────
+      def hostRead(baseAddr: Int, n: Int): Seq[BigInt] = {
+        hostIn.a.valid.poke(true.B)
+        hostIn.a.bits.opcode.poke(TilelinkOpcodes.Get)
+        hostIn.a.bits.param.poke(0.U)
+        hostIn.a.bits.size.poke(n.U)
+        hostIn.a.bits.source.poke(0.U)
+        hostIn.a.bits.address.poke(baseAddr.U)
+        hostIn.a.bits.mask.poke(0xFF.U)
+        hostIn.a.bits.data.poke(0.U)
+        hostIn.a.bits.corrupt.poke(0.U)
+        waitFor(dut)(hostIn.a.ready.peek().litToBoolean, s"hostIn.a.ready read @ 0x${baseAddr.toHexString}")
+        dut.clock.step()
+        hostIn.a.valid.poke(false.B)
+
+        val buf = collection.mutable.ArrayBuffer[BigInt]()
+        while (buf.length < n) {
+          waitFor(dut)(hostIn.d.valid.peek().litToBoolean, s"hostIn D beat ${buf.length} @ 0x${baseAddr.toHexString}")
+          buf += hostIn.d.bits.data.peek().litValue
+          dut.clock.step()
+        }
+        buf.toSeq
+      }
+
+      // ═════════════════════════════════════════════════════════════════════
+      // Phase 1 – Write distinct data to each tier via hostIn
+      // ═════════════════════════════════════════════════════════════════════
+      hostWrite(base0, tier0Data)
+      hostWrite(base1, tier1Data)
+      hostWrite(base2, tier2Data)
+
+      // ═════════════════════════════════════════════════════════════════════
+      // Phase 2 – Read back from each tier via hostIn and verify
+      // ═════════════════════════════════════════════════════════════════════
+      val read0 = hostRead(base0, N)
+      val read1 = hostRead(base1, N)
+      val read2 = hostRead(base2, N)
+
+      assert(read0 == tier0Data,
+        s"Tier 0 mismatch: expected ${tier0Data.map(x => f"0x$x%x")} got ${read0.map(x => f"0x$x%x")}")
+      assert(read1 == tier1Data,
+        s"Tier 1 mismatch: expected ${tier1Data.map(x => f"0x$x%x")} got ${read1.map(x => f"0x$x%x")}")
+      assert(read2 == tier2Data,
+        s"Tier 2 mismatch: expected ${tier2Data.map(x => f"0x$x%x")} got ${read2.map(x => f"0x$x%x")}")
     }
   }
 }
