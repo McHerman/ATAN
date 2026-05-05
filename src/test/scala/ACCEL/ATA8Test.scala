@@ -56,49 +56,51 @@ class ATA8Test extends AnyFreeSpec with Matchers with ChiselSim {
   //
   // 128-bit raw instructions matching the Decodable layouts in ctrlDefs.scala.
   //
-  // addrPkg (36 bits, first-declared = MSB):
-  //   [35:20] addr               (16 bits)
-  //   [19]    sem.valid          (1 bit)
-  //   [18:15] sem.bits.addr      (4 bits) — byte addr into semaphore bank xbar
+  // addrPkg (37 bits, first-declared = MSB):
+  //   [36:21] addr                (16 bits)
+  //   [20]    sem.valid           (1 bit)
+  //   [19:15] sem.bits.addr       (5 bits) — byte addr into semaphore bank xbar
   //   [14]    sem.bits.stepSize.valid (1 bit)
   //   [13:0]  sem.bits.stepSize.bits  (14 bits)
+
+  private val addrPkgMask = (BigInt(1) << 37) - 1
 
   def addrPkgBits(addr: Int, semEnable: Boolean, semAddr: Int, stepSize: Int): BigInt = {
     var v = BigInt(stepSize & 0x3FFF)                       // stepSize.bits
     v |= BigInt(1) << 14                                    // stepSize.valid
-    v |= BigInt(semAddr & 0xF) << 15                        // sem.bits.addr
-    if (semEnable) v |= BigInt(1) << 19                     // sem.valid
-    v |= BigInt(addr & 0xFFFF) << 20                        // addr
+    v |= BigInt(semAddr & 0x1F) << 15                       // sem.bits.addr
+    if (semEnable) v |= BigInt(1) << 20                     // sem.valid
+    v |= BigInt(addr & 0xFFFF) << 21                        // addr
     v
   }
 
   /** ExecuteInst:
    *  opcode[5:0]=1, func[6], mode[7], size[15:8],
-   *  addrs(0)[51:16], addrs(1)[87:52], addrd(0)[123:88], grainSize[127:124] */
+   *  addrs(0)[52:16], addrs(1)[89:53], addrd(0)[126:90] */
   def assembleExe(mode: Int, size: Int,
                   addrsPkg0: BigInt, addrsPkg1: BigInt, addrdPkg0: BigInt): BigInt = {
     var inst = BigInt(1)                                    // opcode = 1
     inst |= BigInt(mode & 0x1) << 7                         // mode
     inst |= BigInt(size & 0xFF) << 8                        // size
-    inst |= (addrsPkg0 & ((BigInt(1) << 36) - 1)) << 16     // addrs(0)
-    inst |= (addrsPkg1 & ((BigInt(1) << 36) - 1)) << 52     // addrs(1)
-    inst |= (addrdPkg0 & ((BigInt(1) << 36) - 1)) << 88     // addrd(0)
+    inst |= (addrsPkg0 & addrPkgMask) << 16                 // addrs(0)
+    inst |= (addrsPkg1 & addrPkgMask) << 53                 // addrs(1)
+    inst |= (addrdPkg0 & addrPkgMask) << 90                 // addrd(0)
     inst
   }
 
-  /** LoadInst: opcode[5:0]=2, size[15:8], addrd(0)[51:16] */
+  /** LoadInst: opcode[5:0]=2, size[15:8], addrd(0)[52:16] */
   def assembleLd(size: Int, addrdPkg0: BigInt): BigInt = {
     var inst = BigInt(2)                                    // opcode = 2
     inst |= BigInt(size & 0xFF) << 8                        // size
-    inst |= (addrdPkg0 & ((BigInt(1) << 36) - 1)) << 16     // addrd(0)
+    inst |= (addrdPkg0 & addrPkgMask) << 16                 // addrd(0)
     inst
   }
 
-  /** StoreInst: opcode[5:0]=3, size[15:8], addrs(0)[51:16] */
+  /** StoreInst: opcode[5:0]=3, size[15:8], addrs(0)[52:16] */
   def assembleSt(size: Int, addrsPkg0: BigInt): BigInt = {
     var inst = BigInt(3)                                    // opcode = 3
     inst |= BigInt(size & 0xFF) << 8                        // size
-    inst |= (addrsPkg0 & ((BigInt(1) << 36) - 1)) << 16     // addrs(0)
+    inst |= (addrsPkg0 & addrPkgMask) << 16                 // addrs(0)
     inst
   }
 
