@@ -16,16 +16,14 @@ object Encoding {
     addrs0: BigInt,
     addrs1: BigInt = BigInt(0),
     addrd0: BigInt,
-    grainSize: Int = 0,
   ): BigInt = Execute.encode(Map(
-    "opcode"    -> BigInt(Execute.opcode),
-    "func"      -> BigInt(func),
-    "mode"      -> BigInt(mode),
-    "size"      -> BigInt(size),
-    "addrs0"    -> addrs0,
-    "addrs1"    -> addrs1,
-    "addrd0"    -> addrd0,
-    "grainSize" -> BigInt(grainSize),
+    "opcode" -> BigInt(Execute.opcode),
+    "func"   -> BigInt(func),
+    "mode"   -> BigInt(mode),
+    "size"   -> BigInt(size),
+    "addrs0" -> addrs0,
+    "addrs1" -> addrs1,
+    "addrd0" -> addrd0,
   ))
 
   /** Encode a Load instruction. */

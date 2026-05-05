@@ -27,20 +27,22 @@ object InstructionSet {
   }
 
   // ---------------------------------------------------------------------------
-  // addrPkg sub-layout (36 bits)
+  // addrPkg sub-layout (37 bits)
   // Mirrors the Chisel `addrPkg` Bundle in ctrlDefs.scala.
+  // semAddr is 5 bits to address up to 32 semaphore-bank ports
+  // (8 semaphores × 4 ports/sem in SemaphoreBank.scala).
   // ---------------------------------------------------------------------------
-  val AddrPkgWidth = 36
+  val AddrPkgWidth = 37
   object AddrPkg {
-    val addr              = Field("addr",              20, 16)
-    val semValid          = Field("sem.valid",         19,  1)
-    val semAddr           = Field("sem.addr",          15,  4)
+    val addr              = Field("addr",              21, 16)
+    val semValid          = Field("sem.valid",         20,  1)
+    val semAddr           = Field("sem.addr",          15,  5)
     val semStepSizeValid  = Field("sem.stepSize.valid", 14,  1)
     val semStepSizeBits   = Field("sem.stepSize.bits",   0, 14)
 
     val fields: Seq[Field] = Seq(addr, semValid, semAddr, semStepSizeValid, semStepSizeBits)
 
-    /** Encode an addrPkg value (36-bit BigInt). */
+    /** Encode an addrPkg value (37-bit BigInt). */
     def encode(
       addr: Int,
       semValid: Boolean = false,
@@ -49,10 +51,10 @@ object InstructionSet {
       stepSize: Int = 0,
     ): BigInt = {
       var v = BigInt(0)
-      v |= BigInt(addr & 0xFFFF) << 20
+      v |= BigInt(addr & 0xFFFF) << 21
       if (semValid) {
-        v |= BigInt(1) << 19
-        v |= BigInt(semAddr & 0xF) << 15
+        v |= BigInt(1) << 20
+        v |= BigInt(semAddr & 0x1F) << 15
         if (stepSizeValid) {
           v |= BigInt(1) << 14
           v |= BigInt(stepSize & 0x3FFF)
@@ -71,14 +73,13 @@ object InstructionSet {
   // ---------------------------------------------------------------------------
 
   val Execute = InstructionLayout(1, Seq(
-    Field("opcode",    0, 6),
-    Field("func",      6, 1),
-    Field("mode",      7, 1),
-    Field("size",      8, 8),
-    Field("addrs0",   16, AddrPkgWidth),
-    Field("addrs1",   52, AddrPkgWidth),
-    Field("addrd0",   88, AddrPkgWidth),
-    Field("grainSize", 124, 4),
+    Field("opcode",  0, 6),
+    Field("func",    6, 1),
+    Field("mode",    7, 1),
+    Field("size",    8, 8),
+    Field("addrs0", 16, AddrPkgWidth),
+    Field("addrs1", 53, AddrPkgWidth),
+    Field("addrd0", 90, AddrPkgWidth),
   ))
 
   val Load = InstructionLayout(2, Seq(
@@ -101,8 +102,8 @@ object InstructionSet {
     Field("func",    6, 1),
     Field("size",    8, 8),
     Field("addrs0", 16, AddrPkgWidth),
-    Field("addrd0", 52, AddrPkgWidth),
-    Field("DMAAddr", 88, 4),
+    Field("addrd0", 53, AddrPkgWidth),
+    Field("DMAAddr", 90, 4),
   ))
 
   val SemProg = InstructionLayout(5, Seq(
