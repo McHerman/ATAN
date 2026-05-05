@@ -12,13 +12,13 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
   // ── Instruction assembly helpers ──────────────────────────────────────────
   // These build 64-bit raw instruction values matching the Decodable layouts.
   //
-  // addrPkg (36 bits) Chisel bit ordering (first-declared = MSB):
-  //   [35:20] addr
-  //   [19:0]  sem  (Valid bundle, all zeros when sem disabled)
+  // addrPkg (37 bits) Chisel bit ordering (first-declared = MSB):
+  //   [36:21] addr
+  //   [20:0]  sem  (Valid bundle, all zeros when sem disabled)
   //
   // With a 64-bit AXI bus, only instruction bits [63:0] are populated.
 
-  def addrPkgBits(addr: Int): BigInt = BigInt(addr & 0xFFFF) << 20
+  def addrPkgBits(addr: Int): BigInt = BigInt(addr & 0xFFFF) << 21
 
   /** ExecuteInst: opcode[5:0]=1, func[6], mode[7], size[15:8], addrs(0)[51:16] */
   def assembleExe(mode: Int, size: Int, addr0: Int): BigInt = {

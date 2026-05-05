@@ -73,7 +73,6 @@ class ExecuteTest extends AnyFreeSpec with Matchers with ChiselSim {
     dut.io.instructionStream.bits.opcode.poke(1.U)
     dut.io.instructionStream.bits.func.poke(0.U)
     dut.io.instructionStream.bits.mode.poke(mode.U)
-    dut.io.instructionStream.bits.grainSize.poke(0.U)
     dut.io.instructionStream.bits.size.poke(size.U)
 
     val ports = Seq(

@@ -81,7 +81,6 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
     dut.io.in.response.valid.poke(true.B)
     dut.io.in.response.bits.readData.func.poke(0.U)
     dut.io.in.response.bits.readData.mode.poke(mode.U)
-    dut.io.in.response.bits.readData.grainSize.poke(0.U)
     dut.io.in.response.bits.readData.size.poke(size.U)
 
     val ports = Seq(
