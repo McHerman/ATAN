@@ -33,7 +33,7 @@ class BufferFIFO[T <: Data](val size: Int, val dataType: T) extends Module {
 
   Mem.io.Read := DontCare
 
-  when(io.WriteData.valid){
+  when(io.WriteData.valid && !Full){
     Mem.io.Write.valid := true.B
     Mem.io.Write.bits.addr := Head
     Mem.io.Write.bits.data := io.WriteData.bits  // updated line
@@ -52,7 +52,7 @@ class BufferFIFO[T <: Data](val size: Int, val dataType: T) extends Module {
 
   Mem.io.Read.addr := Tail
   
-  when(io.ReadData.request.valid){
+  when(io.ReadData.request.valid && !empty){
 
     when(Tail === (size.U - 1.U)){
       Tail := 0.U
