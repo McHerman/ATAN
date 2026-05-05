@@ -20,7 +20,7 @@ trait Decodable { self: Bundle =>
 
 class addrPkg(implicit c: Configuration) extends Bundle {
   val addr = UInt(16.W)
-  val sem = Valid(new Bundle { val addr = UInt(4.W); val stepSize = Valid(UInt(14.W)) })
+  val sem = Valid(new Bundle { val addr = UInt(5.W); val stepSize = Valid(UInt(14.W)) })
 }
 
 abstract class InstBase(implicit c: Configuration) extends Bundle {
@@ -35,13 +35,12 @@ abstract class InstBaseExtended(addrsSize: Int, addrdSize: Int)(implicit c: Conf
 }
 
 class ExecuteInst(implicit c: Configuration) extends InstBaseExtended(2, 1) with Decodable {
-  val mode      = UInt(1.W)
-  val grainSize = UInt(4.W)
+  val mode = UInt(1.W)
 
   private val fieldMap: Map[String, Data] = Map(
     "opcode" -> opcode, "func" -> func, "mode" -> mode,
     "size" -> size, "addrs0" -> addrs(0), "addrs1" -> addrs(1),
-    "addrd0" -> addrd(0), "grainSize" -> grainSize,
+    "addrd0" -> addrd(0),
   )
 
   def layout = InstructionSet.Execute.fields.map { f =>
