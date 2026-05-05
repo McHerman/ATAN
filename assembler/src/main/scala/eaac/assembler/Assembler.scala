@@ -1,6 +1,7 @@
 package eaac.assembler
 
-import eaac.shared.InstructionSet.AddrPkg
+import eaac.shared.InstructionSet
+import eaac.shared.InstructionSet.{AddrPkg, Field}
 import eaac_fb._
 
 import java.nio.ByteBuffer
@@ -12,6 +13,8 @@ case class AssemblerConfig(
   dataBusBytes: Int = 8,
   /** Number of memory tiers in the hardware (used to map FB tier numbering to hardware tier indices). */
   nTiers: Int = 3,
+  /** When true, the assembler prints a decoded trace of each lowered instruction. */
+  verbose: Boolean = false,
 )
 
 object AssemblerConfig {
@@ -60,15 +63,20 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     val funcs = (0 until program.functionsLength()).map { i =>
       assembleFunction(program.functions(i), consts)
     }
-    AssembledProgram(funcs)
+    val assembled = AssembledProgram(funcs)
+    if (config.verbose) println(s"Total: ${assembled.allInstructions.length} instructions")
+    assembled
   }
 
   private def assembleFunction(fn: eaac_fb.Function, const: Seq[eaac_fb.Constant]): AssembledFunction = {
     val buffers = (0 until fn.buffersLength()).map(fn.buffers(_))
     val instructions = new ArrayBuffer[BigInt]()
     val preloads = new ArrayBuffer[Preload]()
+    if (config.verbose) println(s"Function '${fn.name()}' (${fn.opsLength()} ops):")
     for (i <- 0 until fn.opsLength()) {
-      val lowered = lowerCommand(fn.ops(i), buffers, const)
+      val op = fn.ops(i)
+      val lowered = lowerCommand(op, buffers, const)
+      if (config.verbose) traceLowered(op, lowered, instructions.length)
       instructions ++= lowered.instructions
       preloads ++= lowered.preloads
     }
@@ -177,13 +185,7 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     val srcId = store.src().toInt
     val src = buffers(srcId)
 
-    println(f"store buffer, src_id: ${srcId}")
-
     val srcSem = findSemForBuffer(exec, isAcquire = false, srcId)
-
-    //println(f"buffer ${src.id.toInt}")
-
-    println(f"store semaphore, id: ${srcSem}")
 
     val beats = bufferBeats(src)
 
@@ -262,13 +264,14 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
 
     for (i <- 0 until count) {
       val dep = getDep(i)
-      print(f"${dep.semAddress()}")
+
+      val adjusted = dep.semAddress * 4
 
       // To ensure that the producer and consumer doesnt request the same memory port
-      val offset = if (isAcquire) 0 else 2 
+      val offset = if (isAcquire) 0 else 2
 
       if (dep.bufferId() == bufferId)
-        return Some(dep.semAddress() + offset)
+        return Some(adjusted + offset)
     }
     None
   }
@@ -283,6 +286,98 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     val shape = (0 until buf.shapeLength()).map(buf.shape(_))
     val elemBytes = Encoding.elementBytes(buf.elementType())
     Encoding.bufferByteSize(shape, elemBytes)
+  }
+
+  // ── Verbose tracing ───────────────────────────────────────────────────
+
+  /** Print the result of lowering a single source op: each emitted instruction
+    * is shown decoded plus its raw 128-bit hex; preloads are summarised on one
+    * line. `firstIdx` is the program-relative index of the first emitted
+    * instruction in this op's lowering.
+    */
+  private def traceLowered(op: Operation, lowered: Lowered, firstIdx: Int): Unit = {
+    val srcLabel = commandLabel(op.commandType())
+    if (lowered.instructions.isEmpty && lowered.preloads.isEmpty) {
+      println(f"  [---] $srcLabel%-10s (no emit)")
+    }
+    for ((inst, j) <- lowered.instructions.zipWithIndex) {
+      val idx = firstIdx + j
+      println(f"  [$idx%3d] $srcLabel%-10s ${formatInstruction(inst)}")
+      println(f"         raw: 0x${inst}%032x")
+    }
+    for (preload <- lowered.preloads) {
+      println(
+        f"  [pre] $srcLabel%-10s preload tier=${preload.tier} " +
+        f"offset=0x${preload.offsetAddress}%x shape=${preload.shape.mkString("x")} " +
+        f"bytes=${preload.data.length}"
+      )
+    }
+  }
+
+  private def commandLabel(t: Byte): String = t match {
+    case Command.SemAlloc   => "SemAlloc"
+    case Command.SemDealloc => "SemDealloc"
+    case Command.Execute    => "Execute"
+    case Command.MemAlloc   => "MemAlloc"
+    case Command.MemDealloc => "MemDealloc"
+    case other              => s"Cmd($other)"
+  }
+
+  private val opcodeNames: Map[Int, String] = Map(
+    1 -> "Execute",
+    2 -> "Load",
+    3 -> "Store",
+    4 -> "DMA",
+    5 -> "SemProg",
+  )
+
+  /** Whether an addrPkg field is a source (acquire/wait) or destination (release/signal). */
+  private val addrPkgRole: Map[String, String] = Map(
+    "addrs0" -> "acquire",
+    "addrs1" -> "acquire",
+    "addrd0" -> "release",
+  )
+
+  private def extractField(inst: BigInt, field: Field): BigInt =
+    (inst >> field.startBit) & ((BigInt(1) << field.width) - 1)
+
+  private def isAddrPkgField(f: Field): Boolean =
+    f.name.startsWith("addr") && f.width == InstructionSet.AddrPkgWidth
+
+  private def formatAddrPkg(value: BigInt, fieldName: String): String = {
+    val addr     = extractField(value, AddrPkg.addr)
+    val semV     = extractField(value, AddrPkg.semValid)
+    val semA     = extractField(value, AddrPkg.semAddr)
+    val stepV    = extractField(value, AddrPkg.semStepSizeValid)
+    val stepSize = extractField(value, AddrPkg.semStepSizeBits)
+
+    val sb = new StringBuilder
+    sb ++= f"addr=0x${addr}%04x"
+    if (semV != 0) {
+      val role = addrPkgRole.getOrElse(fieldName, "")
+      sb ++= f", sem=$semA%d"
+      if (role.nonEmpty) sb ++= s" ($role)"
+      if (stepV != 0) sb ++= f", step=$stepSize%d"
+    }
+    sb.result()
+  }
+
+  private def formatInstruction(inst: BigInt): String = {
+    val opcode = (inst & 0x3F).toInt
+    InstructionSet.All.get(opcode) match {
+      case None => f"UNKNOWN opcode=$opcode"
+      case Some(layout) =>
+        val name = opcodeNames.getOrElse(opcode, s"Op$opcode")
+        val parts = layout.fields.flatMap {
+          case f if f.name == "opcode" => None
+          case f if isAddrPkgField(f) =>
+            val raw = extractField(inst, f)
+            Some(s"${f.name}={${formatAddrPkg(raw, f.name)}}")
+          case f =>
+            Some(f"${f.name}=${extractField(inst, f)}%d")
+        }
+        f"$name%-8s ${parts.mkString(", ")}"
+    }
   }
 }
 

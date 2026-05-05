@@ -26,11 +26,8 @@ object Main {
     val bytes = Files.readAllBytes(Paths.get(inputPath))
     val buf = ByteBuffer.wrap(bytes)
 
-    // Assemble
-    val program = Assembler.assemble(buf)
-
-    // Print decoded instructions
-    print(PrettyPrinter.prettyPrint(program))
+    // Assemble (verbose: prints a decoded trace as it lowers each op)
+    val program = new Assembler(AssemblerConfig(verbose = true)).assemble(buf)
 
     val allInsts = program.allInstructions
 
