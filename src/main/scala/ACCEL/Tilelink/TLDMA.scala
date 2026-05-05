@@ -106,8 +106,9 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
         io.tl.a.bits.data    := dataIn.response.bits.readData
         io.tl.a.bits.mask    := HelperFunctions.uintToBoolVec(effectiveSize, c.dataBusSize).asUInt
 
+        dataIn.request.valid := io.tl.a.ready
+
         when(io.tl.a.fire) {
-          dataIn.request.valid := true.B
           beatCnt := 1.U
 
           when(effectiveSize > 1.U) {
