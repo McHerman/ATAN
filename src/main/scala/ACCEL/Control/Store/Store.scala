@@ -15,7 +15,7 @@ class Store(implicit c: Configuration) extends Module {
     val debug = new StoreDebug
   })
 
-  val queue           = Module(new BufferFIFO(32, new StoreInst))
+  val queue           = Module(new BufferFIFO(4, new StoreInst))
   val StoreController = Module(new StoreController)
 
   queue.io.WriteData <> io.instructionStream

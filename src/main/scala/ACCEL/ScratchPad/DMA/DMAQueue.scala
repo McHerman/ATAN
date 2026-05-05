@@ -3,7 +3,7 @@ package ATA8
 import chisel3._
 import chisel3.util._
 
-class DMAQueue(nDMAs: Int, queueDepth: Int = 8)(implicit c: Configuration) extends Module {
+class DMAQueue(nDMAs: Int, queueDepth: Int = 2)(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
     val instructionStream = Flipped(Decoupled(new DMAInst))
     val dmaInterfaces     = Vec(nDMAs, new dmaInterface(2))

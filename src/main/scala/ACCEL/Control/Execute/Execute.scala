@@ -17,11 +17,12 @@ class Execute(implicit c: Configuration) extends Module {
     val debug = new ExeDebug
   })
 
-  val queue      = Module(new BufferFIFO(32, new ExecuteInst))
+  val queue      = Module(new BufferFIFO(4, new ExecuteInst))
   val SysWrapper = Module(new SysWrapper)
 
   queue.io.WriteData <> io.instructionStream
   SysWrapper.io.in  <> queue.io.ReadData
+
 
   /// SCRATCHPAD CONNECTIONS ///
 

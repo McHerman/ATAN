@@ -44,27 +44,27 @@ class Dispatch(implicit c: Configuration) extends Module {
       is(1.U) {
         io.exeStream.valid := true.B
         io.exeStream.bits  := inReg.data(0).asInstanceOf[ExecuteInst]
-        when(io.exeStream.ready) { valid := false.B }
+        when(io.exeStream.fire) { valid := false.B }
       }
       is(2.U) {
         io.loadStream.valid := true.B
         io.loadStream.bits  := inReg.data(1).asInstanceOf[LoadInst]
-        when(io.loadStream.ready) { valid := false.B }
+        when(io.loadStream.fire) { valid := false.B }
       }
       is(3.U) {
         io.storeStream.valid := true.B
         io.storeStream.bits  := inReg.data(2).asInstanceOf[StoreInst]
-        when(io.storeStream.ready) { valid := false.B }
+        when(io.storeStream.fire) { valid := false.B }
       }
       is(4.U) {
         io.dmaStream.valid := true.B
         io.dmaStream.bits  := inReg.data(3).asInstanceOf[DMAInst]
-        when(io.dmaStream.ready) { valid := false.B }
+        when(io.dmaStream.fire) { valid := false.B }
       }
       is(5.U) {
         io.semProgStream.valid := true.B
         io.semProgStream.bits  := inReg.data(4).asInstanceOf[SemProgInst]
-        when(io.semProgStream.ready) { valid := false.B }
+        when(io.semProgStream.fire) { valid := false.B }
       }
     }
   }
