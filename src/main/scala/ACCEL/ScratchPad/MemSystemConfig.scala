@@ -51,9 +51,9 @@ object MemSystemConfig {
   /** Sensible three-tier default: small L1 + medium L2 + larger L3, single-lane external access. */
   def default(): MemSystemConfig = MemSystemConfig(
     tiers = Seq(
-      TierConfig(nWritePorts = 2, nReadPorts = 3, nBanks = 4,  bankDepth = 256),
-      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 16, bankDepth = 1024),
-      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 8,  bankDepth = 2048)
+      TierConfig(nWritePorts = 2, nReadPorts = 3, nBanks = 1, bankDepth = 1024),
+      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 1, bankDepth = 2048),
+      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 1, bankDepth = 16384)
     )
   )
 }

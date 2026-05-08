@@ -21,7 +21,7 @@ import io.circe.parser._
 class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
 
   val n = 8
-  val maxCycles = 5000
+  val maxCycles = 5000 
 
   // ── Test matrix (same as ATA8Test) ────────────────────────────────────
 
@@ -354,5 +354,97 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     }
   }
 
+
+  "End-to-end large with arguments" in {
+    val testConfig = Configuration.default().copy(sourceWidth = 8)
+    val msCfg = MemSystemConfig.default().copy(sourceWidth = testConfig.sourceWidth)
+    val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize, verbose = true))
+
+    // Phase 1: Build FlatBuffer program
+    //val programBuf = buildMatmulProgram()
+    val inputPath = "/home/karlhk/dtu/Thesis/hardware/ATAN/test/input_8_nn.eaac"
+
+
+    val bytes = Files.readAllBytes(Paths.get(inputPath))
+    val buf = ByteBuffer.wrap(bytes)
+
+    // Phase 2: Assemble into instruction words
+    val assembled = asm.assemble(buf)
+
+    val fn = assembled.functions.head
+    val insts = fn.instructions
+
+    fn.preloads.foreach { preload =>
+      println(f"Preload to address: ${preload.offsetAddress}, tier: ${preload.tier}")
+    }
+
+
+    ////////// Reference import //////////
+
+    case class Tensor(shape: Seq[Int], element_type: String, data: Seq[Int])
+    case class ModelIO(inputs: Seq[Tensor], outputs: Seq[Tensor])
+
+    val jsonStr = Source.fromFile("/home/karlhk/dtu/Thesis/hardware/ATAN/test/input_8_nn.reference.json").mkString
+    
+    val parsed = for {
+      json <- parse(jsonStr)
+      model <- json.as[ModelIO]
+    } yield model
+
+    val inputArrays: Seq[Seq[Int]] =
+      parsed.toOption.get.inputs.map(_.data)
+    
+    val outputArrays: Seq[Seq[Int]] =
+      parsed.toOption.get.outputs.map(_.data)
+
+    //val inputsWithShape =
+    //  parsed.inputs.map(t => (t.shape, t.data))
+    //
+    //val outputsWithShape =
+    //  parsed.outputs.map(t => (t.shape, t.data))
+
+    // Phase 3: Simulate hardware
+    simulate(new ATA8(testConfig)) { dut =>
+      totalCycles = 0L
+
+      // Preload memory for each preload entry
+      fn.preloads.foreach { preload =>
+        preloadMem(dut, preload, msCfg)
+      }
+
+      // Stream all assembled instructions to the hardware
+      for (inst <- insts) {
+        sendInst(dut, inst)
+      }
+
+      val execStart = totalCycles
+
+      // Feed each input array via AXIST_inData; rows are reversed to match
+      // the output access pattern (((n - 1) - row) * n + col).
+      inputArrays.foreach { inputArr =>
+        val rows = (0 until n).map { i =>
+          val rowData = (0 until n).map(col => inputArr(((n - 1) - i) * n + col))
+          packRow(rowData)
+        }
+        feedLoadData(dut, rows)
+      }
+
+      // Collect output from AXIST_out
+      val outputRows = collectStoreData(dut, n)
+      val execEnd = totalCycles
+
+      println(f"[E2E] total cycles     : ${totalCycles}%d")
+      println(f"[E2E] execution cycles : ${execEnd - execStart}%d (first load beat → last store beat)")
+
+      // Phase 4: Verify against golden reference
+      for (row <- 0 until n) {
+        val got = unpackRow(outputRows(row))
+        for (col <- 0 until n) {
+          assert(got(col) == (outputArrays(0)(((n - 1) - row) * n + col)),
+            s"Mismatch at ($row,$col): got ${got(col)}, expected ${outputArrays(0)(((n - 1) - row) * n + col)}")
+        }
+      }
+    }
+  }   
 
 }
