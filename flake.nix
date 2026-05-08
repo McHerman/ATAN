@@ -13,9 +13,9 @@
         pkgs = import nixpkgs { inherit system; };
         openxc7Pkgs = openxc7.packages.${system};
 
-        surferWrapped = pkgs.writeShellScriptBin "surfer" ''
-          WAYLAND_DISPLAY= DISPLAY=:0 exec ${pkgs.surfer}/bin/surfer "$@"
-        '';
+        #surferWrapped = pkgs.writeShellScriptBin "surfer" ''
+        #  WAYLAND_DISPLAY= DISPLAY=:0 exec ${pkgs.surfer}/bin/surfer "$@"
+        #'';
 
         packages = with pkgs; [
           mill
@@ -23,7 +23,7 @@
           circt
           python3
           just
-          surferWrapped
+          #surferWrapped
           gtkwave
           flatbuffers
         ];
