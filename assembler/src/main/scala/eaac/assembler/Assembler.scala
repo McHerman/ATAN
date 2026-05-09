@@ -151,15 +151,40 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     val src = buffers(srcId)
     val dst = buffers(dstId)
 
+    val src_tier = src.tier
+    val dst_tier = dst.tier
+
+    require(
+      math.abs(src_tier - dst_tier) == 1,
+      s"DMA src tier ($src_tier) and dst tier ($dst_tier) must differ by exactly 1",
+    )
+
+    // DMA[i] bridges tier i and tier i+1 via port_A (addrs0, lower tier) and
+    // port_B (addrd0, higher tier).
+    val dmaAddr = math.min(src_tier, dst_tier)
+
+    // func = 0: addrs0 reads (lower tier), addrd0 writes (higher tier)  → downward
+    // func = 1: addrs0 writes (lower tier), addrd0 reads (higher tier)  → upward
+    val dma_func = if (src_tier > dst_tier) 1 else 0
+
     val srcSem = findSemForBuffer(exec, isAcquire = false, srcId)
     val dstSem = findSemForBuffer(exec, isAcquire = true, dstId)
     val beats = bufferBeats(src)
 
+    // Buffers/semaphores are routed by tier, not by src/dst role: the buffer
+    // sitting on the lower tier always goes on addrs0, the one on the higher
+    // tier always goes on addrd0. When the direction flips (upward), this
+    // swaps which port carries the producer vs. consumer semaphore.
+    val (lowBuf, lowSem, highBuf, highSem) =
+      if (src_tier < dst_tier) (src, srcSem, dst, dstSem)
+      else                     (dst, dstSem, src, srcSem)
+
     Lowered(Seq(Encoding.encodeDMA(
-      func   = 0,
-      size   = beats,
-      addrs0 = encodeBufferAddr(src, srcSem, beats),
-      addrd0 = encodeBufferAddr(dst, dstSem, beats),
+      func    = dma_func,
+      size    = beats,
+      addrs0  = encodeBufferAddr(lowBuf,  lowSem,  beats),
+      addrd0  = encodeBufferAddr(highBuf, highSem, beats),
+      dmaAddr = dmaAddr,
     )), Seq.empty)
   }
 
@@ -173,7 +198,7 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     val beats = bufferBeats(dst)
 
     Lowered(Seq(Encoding.encodeLoad(
-      func   = 0,
+      func   = 0, 
       mode   = 0,
       size   = beats,
       addrd0 = encodeBufferAddr(dst, dstSem, beats),
@@ -296,28 +321,30 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     * instruction in this op's lowering.
     */
   private def traceLowered(op: Operation, lowered: Lowered, firstIdx: Int): Unit = {
-    val srcLabel = commandLabel(op.commandType())
+    val srcLabel = commandLabel(op)
     if (lowered.instructions.isEmpty && lowered.preloads.isEmpty) {
-      println(f"  [---] $srcLabel%-10s (no emit)")
+      println(f"  [---] $srcLabel%-18s (no emit)")
     }
     for ((inst, j) <- lowered.instructions.zipWithIndex) {
       val idx = firstIdx + j
-      println(f"  [$idx%3d] $srcLabel%-10s ${formatInstruction(inst)}")
+      println(f"  [$idx%3d] $srcLabel%-18s ${formatInstruction(inst)}")
       println(f"         raw: 0x${inst}%032x")
     }
     for (preload <- lowered.preloads) {
       println(
-        f"  [pre] $srcLabel%-10s preload tier=${preload.tier} " +
+        f"  [pre] $srcLabel%-18s preload tier=${preload.tier} " +
         f"offset=0x${preload.offsetAddress}%x shape=${preload.shape.mkString("x")} " +
         f"bytes=${preload.data.length}"
       )
     }
   }
 
-  private def commandLabel(t: Byte): String = t match {
+  private def commandLabel(op: Operation): String = op.commandType() match {
     case Command.SemAlloc   => "SemAlloc"
     case Command.SemDealloc => "SemDealloc"
-    case Command.Execute    => "Execute"
+    case Command.Execute    =>
+      val exec = op.command(new Execute()).asInstanceOf[Execute]
+      s"Execute(${ExecutePayload.name(exec.payloadType().toInt)})"
     case Command.MemAlloc   => "MemAlloc"
     case Command.MemDealloc => "MemDealloc"
     case other              => s"Cmd($other)"
