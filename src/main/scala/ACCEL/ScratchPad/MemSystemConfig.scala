@@ -56,4 +56,12 @@ object MemSystemConfig {
       TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 1, bankDepth = 16384)
     )
   )
+
+  def small(): MemSystemConfig = MemSystemConfig(
+    tiers = Seq(
+      TierConfig(nWritePorts = 2, nReadPorts = 3, nBanks = 1, bankDepth = 256),
+      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 1, bankDepth = 2048),
+      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 1, bankDepth = 16384)
+    )
+  )
 }
