@@ -11,7 +11,7 @@ case class TLReq(param: UInt, address: Int, data: Int, source: Int = 0)
 class SemaphoreBankTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   // sourceWidth=8 needed: with 2 masters the xbar assigns source ID ranges up to 31
-  def bankConfig: Configuration = Configuration.default().copy(sourceWidth = 8)
+  def bankConfig: Configuration = Configuration.default().withBus(_.copy(sourceWidth = 8))
 
   // Address of semaphore i, port j, register reg (0=full, 1=empty)
   // semaphore i → xbar slaves 2*i (port 0) and 2*i+1 (port 1)

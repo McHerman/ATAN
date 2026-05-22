@@ -7,7 +7,9 @@ import org.scalatest.matchers.must.Matchers
 
 class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
 
-  implicit val c: Configuration = Configuration.default().copy(sourceWidth = 8)
+  implicit val c: Configuration = Configuration.default()
+    .withBus(_.copy(sourceWidth = 8))
+    .withSemaphore(_.copy(queueSize = 4))
 
   val noPorts = 4
 
