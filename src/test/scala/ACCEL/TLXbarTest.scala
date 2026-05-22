@@ -17,7 +17,8 @@ class TLXbarTester extends AnyFlatSpec with Matchers with ChiselSim {
   behavior of "TLXbar"
 
   // Create a test configuration without making it implicit to avoid ambiguity
-  def testConfig: Configuration = Configuration.default().copy(sourceWidth = 8, addrWidth = 17)
+  def testConfig: Configuration =
+    Configuration.default().withBus(_.copy(sourceWidth = 8, addrWidth = 17))
 
   it should "route single master to single slave" in {
     implicit val c = testConfig

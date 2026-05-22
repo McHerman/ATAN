@@ -128,7 +128,7 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
   )
 
   // Must share bus widths with msCfg so TilelinkPort bundles are compatible.
-  val bankCfg: Configuration = Configuration.default().copy(sourceWidth = 8)
+  val bankCfg: Configuration = Configuration.default().withBus(_.copy(sourceWidth = 8))
 
   // Semaphore TL addresses for each DMA pipeline (fullReg, bit-0=0):
   //   SEM_DMA0_A is sent by inPort 0 → slave 0  → semaphore 0, port 0

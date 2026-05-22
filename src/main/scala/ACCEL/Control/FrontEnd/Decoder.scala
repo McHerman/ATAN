@@ -29,8 +29,9 @@ class Decoder(implicit c: Configuration) extends Module {
 
   val inst = inReg.instruction
 
-  // Opcode is shared across all instruction types at bits [5:0]
-  io.issueStream.bits.op := inst(5, 0)
+  // Header layout: [1:0] = length, [7:2] = opcode (shared across all types).
+  val opcode = inst(7, 2)
+  io.issueStream.bits.op := opcode
 
   // Decode all instruction types from raw bits using their layout annotations
   val exe = Wire(new ExecuteInst);    exe := DontCare; exe.decodeFrom(inst)
@@ -45,7 +46,7 @@ class Decoder(implicit c: Configuration) extends Module {
   io.issueStream.bits.data(3).asInstanceOf[DMAInst]      := dma
   io.issueStream.bits.data(4).asInstanceOf[SemProgInst]  := sem
 
-  when(inst(5, 0) =/= 0.U){
+  when(opcode =/= 0.U){
     when(io.issueStream.ready){
       io.issueStream.valid := true.B
     }.otherwise{

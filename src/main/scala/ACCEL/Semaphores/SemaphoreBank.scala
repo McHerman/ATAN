@@ -14,7 +14,7 @@ class SemaphoreBank(noPorts: Int)(implicit c: Configuration) extends Module {
     val progPort = Flipped(Decoupled(new SemaphoreProgPort))
   })
 
-  val noSemaphores = 8
+  val noSemaphores = c.nSemaphores
 
   val semaphores = VecInit(Seq.fill(noSemaphores)(Module(new Semaphore()).io))
 

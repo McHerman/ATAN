@@ -26,14 +26,16 @@ class FrontEnd(implicit c: Configuration) extends Module {
   })
 
   val Reciever  = Module(new InstReciever)
-  val instQueue = Module(new Queue(new InstructionPackage, 32))
+  val beatQueue = Module(new Queue(new InstBeat, 32))
+  val Realigner = Module(new InstRealigner)
   val Decoder   = Module(new Decoder)
   val Dispatch  = Module(new Dispatch)
 
-  Reciever.io.AXIST <> io.AXIST
-  instQueue.io.enq  <> Reciever.io.instructionStream
-  Decoder.io.instructionStream <> instQueue.io.deq
-  Dispatch.io.in <> Decoder.io.issueStream
+  Reciever.io.AXIST            <> io.AXIST
+  beatQueue.io.enq             <> Reciever.io.beatStream
+  Realigner.io.beatIn          <> beatQueue.io.deq
+  Decoder.io.instructionStream <> Realigner.io.instOut
+  Dispatch.io.in               <> Decoder.io.issueStream
 
   io.exeStream     <> Dispatch.io.exeStream
   io.loadStream    <> Dispatch.io.loadStream
@@ -41,8 +43,8 @@ class FrontEnd(implicit c: Configuration) extends Module {
   io.dmaStream     <> Dispatch.io.dmaStream
   io.semProgStream <> Dispatch.io.semProgStream
 
-  io.receiverDebug.valid := Reciever.io.instructionStream.valid
-  io.receiverDebug.bits  := Reciever.io.instructionStream.bits.instruction
+  io.receiverDebug.valid := Reciever.io.beatStream.valid
+  io.receiverDebug.bits  := Reciever.io.beatStream.bits.data(63, 0)
 
   io.decodeDebug.valid := Decoder.io.issueStream.valid
   io.decodeDebug.bits  := Decoder.io.issueStream.bits.data(1).asInstanceOf[LoadInst]

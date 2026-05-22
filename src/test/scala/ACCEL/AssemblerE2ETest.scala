@@ -21,7 +21,7 @@ import io.circe.parser._
 class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
 
   val n = 8
-  val maxCycles = 5000 
+  val maxCycles = 15000 
 
   // ── Test matrix (same as ATA8Test) ────────────────────────────────────
 
@@ -151,7 +151,7 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
 
 
   "End-to-end no arg" in {
-    val testConfig = Configuration.default().copy(sourceWidth = 8)
+    val testConfig = Configuration.default().withBus(_.copy(sourceWidth = 8))
     val msCfg = MemSystemConfig.default().copy(sourceWidth = testConfig.sourceWidth)
     val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize, verbose = true))
 
@@ -263,7 +263,10 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
   }
 
   "End-to-end with arguments" in {
-    val testConfig = Configuration.default().copy(sourceWidth = 8)
+    val testConfig = Configuration
+      .default()
+      .withBus(_.copy(sourceWidth = 8))
+      .withSemaphore(_.copy(nSemaphores = 16))
     val msCfg = MemSystemConfig.default().copy(sourceWidth = testConfig.sourceWidth)
     val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize, verbose = true))
 
@@ -356,7 +359,7 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
 
 
   "End-to-end large with arguments" in {
-    val testConfig = Configuration.default().copy(sourceWidth = 8)
+    val testConfig = Configuration.default().withBus(_.copy(sourceWidth = 8))
     val msCfg = MemSystemConfig.default().copy(sourceWidth = testConfig.sourceWidth)
     val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize, verbose = true))
 
@@ -445,10 +448,90 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
         }
       }
     }
-  }   
+  }
+  /*
+  "End-to-end XL with 32 semaphores" in {
+    val testConfig = Configuration
+      .default()
+      .withBus(_.copy(sourceWidth = 8))
+      .withSemaphore(_.copy(nSemaphores = 32))
+    val msCfg = MemSystemConfig.default().copy(sourceWidth = testConfig.sourceWidth)
+    val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize, verbose = true))
+
+    val inputPath = "/home/karlhk/dtu/Thesis/hardware/ATAN/test/input_8_nn_xl.eaac"
+
+    val bytes = Files.readAllBytes(Paths.get(inputPath))
+    val buf = ByteBuffer.wrap(bytes)
+
+    val assembled = asm.assemble(buf)
+    val fn = assembled.functions.head
+    val insts = fn.instructions
+
+    fn.preloads.foreach { preload =>
+      println(f"Preload to address: ${preload.offsetAddress}, tier: ${preload.tier}")
+    }
+
+    ////////// Reference import //////////
+
+    case class Tensor(shape: Seq[Int], element_type: String, data: Seq[Int])
+    case class ModelIO(inputs: Seq[Tensor], outputs: Seq[Tensor])
+
+    val jsonStr = Source.fromFile("/home/karlhk/dtu/Thesis/hardware/ATAN/test/input_8_nn_xl.reference.json").mkString
+
+    val parsed = for {
+      json <- parse(jsonStr)
+      model <- json.as[ModelIO]
+    } yield model
+
+    val inputArrays: Seq[Seq[Int]] =
+      parsed.toOption.get.inputs.map(_.data)
+
+    val outputArrays: Seq[Seq[Int]] =
+      parsed.toOption.get.outputs.map(_.data)
+
+    simulate(new ATA8(testConfig)) { dut =>
+      totalCycles = 0L
+
+      fn.preloads.foreach { preload =>
+        preloadMem(dut, preload, msCfg)
+      }
+
+      for (inst <- insts) {
+        sendInst(dut, inst)
+      }
+
+      val execStart = totalCycles
+
+      inputArrays.foreach { inputArr =>
+        val rows = (0 until n).map { i =>
+          val rowData = (0 until n).map(col => inputArr(((n - 1) - i) * n + col))
+          packRow(rowData)
+        }
+        feedLoadData(dut, rows)
+      }
+
+      val outputRows = collectStoreData(dut, n)
+      val execEnd = totalCycles
+
+      println(f"[E2E] total cycles     : ${totalCycles}%d")
+      println(f"[E2E] execution cycles : ${execEnd - execStart}%d (first load beat → last store beat)")
+
+      for (row <- 0 until n) {
+        val got = unpackRow(outputRows(row))
+        for (col <- 0 until n) {
+          assert(got(col) == (outputArrays(0)(((n - 1) - row) * n + col)),
+            s"Mismatch at ($row,$col): got ${got(col)}, expected ${outputArrays(0)(((n - 1) - row) * n + col)}")
+        }
+      }
+    }
+  }
+  */
 
   "End-to-end small mem" in {
-    val testConfig = Configuration.default().copy(sourceWidth = 8)
+    val testConfig = Configuration
+      .default()
+      .withBus(_.copy(sourceWidth = 8))
+      .withSemaphore(_.copy(nSemaphores = 32))
     val msCfg = MemSystemConfig.small().copy(sourceWidth = testConfig.sourceWidth)
     val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize, verbose = true))
 

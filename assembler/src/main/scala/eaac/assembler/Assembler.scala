@@ -21,8 +21,13 @@ object AssemblerConfig {
   val default: AssemblerConfig = AssemblerConfig()
 }
 
-/** Assembles an EAAC FlatBuffer program into a sequence of 128-bit
-  * instruction words that can be streamed to the accelerator.
+/** Assembles an EAAC FlatBuffer program into a stream of 128-bit beats.
+  *
+  * Each lowered instruction is variable length (1, 2 or 3 × 64 b) per the
+  * shared `InstructionSet` layouts; the assembler packs them slot-by-slot
+  * into the AXI-S beat stream that the front-end realigner consumes.
+  * `AssembledFunction.instructions` now holds the packed 128-bit beats —
+  * downstream callers iterate beats and stream them as-is.
   */
 class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
 
@@ -38,13 +43,15 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
 
   case class AssembledFunction(
     name: String,
+    /** Packed 128-bit beats ready to stream to the accelerator's AXI-S port. */
     instructions: Seq[BigInt],
     preloads: Seq[Preload]
   )
 
 
   case class Lowered(
-    instructions: Seq[BigInt],
+    /** Per-source-op encoded instructions, kept around for verbose tracing. */
+    instructions: Seq[Encoding.Encoded],
     preloads: Seq[Preload]
   )
 
@@ -64,23 +71,24 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
       assembleFunction(program.functions(i), consts)
     }
     val assembled = AssembledProgram(funcs)
-    if (config.verbose) println(s"Total: ${assembled.allInstructions.length} instructions")
+    if (config.verbose) println(s"Total: ${assembled.allInstructions.length} packed beats")
     assembled
   }
 
   private def assembleFunction(fn: eaac_fb.Function, const: Seq[eaac_fb.Constant]): AssembledFunction = {
     val buffers = (0 until fn.buffersLength()).map(fn.buffers(_))
-    val instructions = new ArrayBuffer[BigInt]()
+    val encoded = new ArrayBuffer[Encoding.Encoded]()
     val preloads = new ArrayBuffer[Preload]()
     if (config.verbose) println(s"Function '${fn.name()}' (${fn.opsLength()} ops):")
     for (i <- 0 until fn.opsLength()) {
       val op = fn.ops(i)
       val lowered = lowerCommand(op, buffers, const)
-      if (config.verbose) traceLowered(op, lowered, instructions.length)
-      instructions ++= lowered.instructions
+      if (config.verbose) traceLowered(op, lowered, encoded.length)
+      encoded ++= lowered.instructions
       preloads ++= lowered.preloads
     }
-    AssembledFunction(fn.name(), instructions.toSeq, preloads.toSeq)
+    val beats = Encoding.packBeats(encoded.toSeq)
+    AssembledFunction(fn.name(), beats, preloads.toSeq)
   }
 
   private def lowerCommand(op: Operation, buffers: Seq[BufferRef], const: Seq[eaac_fb.Constant]): Lowered = op.commandType() match {
@@ -316,9 +324,10 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
   // ── Verbose tracing ───────────────────────────────────────────────────
 
   /** Print the result of lowering a single source op: each emitted instruction
-    * is shown decoded plus its raw 128-bit hex; preloads are summarised on one
-    * line. `firstIdx` is the program-relative index of the first emitted
-    * instruction in this op's lowering.
+    * is shown decoded plus its raw hex; preloads are summarised on one line.
+    * `firstIdx` is the program-relative index of the first emitted instruction
+    * in this op's lowering.  Hex width tracks the instruction's slot count
+    * (16, 32, or 48 nibbles for 1/2/3-slot insts).
     */
   private def traceLowered(op: Operation, lowered: Lowered, firstIdx: Int): Unit = {
     val srcLabel = commandLabel(op)
@@ -327,8 +336,9 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     }
     for ((inst, j) <- lowered.instructions.zipWithIndex) {
       val idx = firstIdx + j
-      println(f"  [$idx%3d] $srcLabel%-18s ${formatInstruction(inst)}")
-      println(f"         raw: 0x${inst}%032x")
+      val nibbles = inst.bitWidth / 4
+      println(f"  [$idx%3d] $srcLabel%-18s ${formatInstruction(inst.bits)}")
+      println(s"         raw (${inst.slots}×64b): 0x" + String.format(s"%0${nibbles}x", inst.bits.bigInteger))
     }
     for (preload <- lowered.preloads) {
       println(
@@ -390,13 +400,14 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
   }
 
   private def formatInstruction(inst: BigInt): String = {
-    val opcode = (inst & 0x3F).toInt
+    val opcode = ((inst >> InstructionSet.OpcodeField.startBit) &
+      ((BigInt(1) << InstructionSet.OpcodeField.width) - 1)).toInt
     InstructionSet.All.get(opcode) match {
       case None => f"UNKNOWN opcode=$opcode"
       case Some(layout) =>
         val name = opcodeNames.getOrElse(opcode, s"Op$opcode")
         val parts = layout.fields.flatMap {
-          case f if f.name == "opcode" => None
+          case f if f.name == "opcode" || f.name == "length" => None
           case f if isAddrPkgField(f) =>
             val raw = extractField(inst, f)
             Some(s"${f.name}={${formatAddrPkg(raw, f.name)}}")

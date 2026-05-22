@@ -5,70 +5,65 @@ import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.freespec.AnyFreeSpec
 import org.scalatest.matchers.must.Matchers
 
+import eaac.assembler.Encoding
+import eaac.assembler.Encoding.Encoded
+import eaac.shared.InstructionSet
+import eaac.shared.InstructionSet.{AddrPkg, Execute, Load, Store, DMA, SemProg}
+
+/** Front-end tests.
+  *
+  * Instructions are variable length (1–3 × 64-bit slots) and the AXI-S input
+  * carries them in 128-bit beat-packed form.  These tests build each
+  * instruction using the shared `InstructionSet` layouts, hand them to
+  * `Encoding.packBeats` to pack into beats, and stream the beats one at a
+  * time — exactly what the assembler does in production.
+  */
 class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   val maxCycles = 500
 
-  // ── Instruction assembly helpers ──────────────────────────────────────────
-  // These build 64-bit raw instruction values matching the Decodable layouts.
-  //
-  // addrPkg (37 bits) Chisel bit ordering (first-declared = MSB):
-  //   [36:21] addr
-  //   [20:0]  sem  (Valid bundle, all zeros when sem disabled)
-  //
-  // With a 64-bit AXI bus, only instruction bits [63:0] are populated.
+  // ── Instruction encoders ──────────────────────────────────────────────────
 
-  def addrPkgBits(addr: Int): BigInt = BigInt(addr & 0xFFFF) << 21
+  private def simpleAddr(addr: Int): BigInt = AddrPkg.simple(addr)
 
-  /** ExecuteInst: opcode[5:0]=1, func[6], mode[7], size[15:8], addrs(0)[51:16] */
-  def assembleExe(mode: Int, size: Int, addr0: Int): BigInt = {
-    var inst = BigInt(1)                        // opcode = 1
-    inst |= BigInt(mode & 0x1) << 7             // mode
-    inst |= BigInt(size & 0xFF) << 8            // size
-    inst |= addrPkgBits(addr0) << 16            // addrs(0)
-    inst
-  }
+  def assembleExe(mode: Int, size: Int, addr0: Int): Encoded =
+    Encoding.encodeExecute(
+      func   = 0,
+      mode   = mode,
+      size   = size,
+      addrs0 = simpleAddr(addr0),
+      addrd0 = BigInt(0),
+    )
 
-  /** LoadInst: opcode[5:0]=2, func[6], mode[7], size[15:8], addrd(0)[51:16] */
-  def assembleLd(func: Int, mode: Int, size: Int, addrD: Int): BigInt = {
-    var inst = BigInt(2)                        // opcode = 2
-    inst |= BigInt(func & 0x1) << 6             // func
-    inst |= BigInt(mode & 0x1) << 7             // mode
-    inst |= BigInt(size & 0xFF) << 8            // size
-    inst |= addrPkgBits(addrD) << 16            // addrd(0)
-    inst
-  }
+  def assembleLd(func: Int, mode: Int, size: Int, addrD: Int): Encoded =
+    Encoding.encodeLoad(
+      func   = func,
+      mode   = mode,
+      size   = size,
+      addrd0 = simpleAddr(addrD),
+    )
 
-  /** StoreInst: opcode[5:0]=3, func[6], size[15:8], addrs(0)[51:16] */
-  def assembleSt(func: Int, size: Int, addrS: Int): BigInt = {
-    var inst = BigInt(3)                        // opcode = 3
-    inst |= BigInt(func & 0x1) << 6             // func
-    inst |= BigInt(size & 0xFF) << 8            // size
-    inst |= addrPkgBits(addrS) << 16            // addrs(0)
-    inst
-  }
+  def assembleSt(func: Int, size: Int, addrS: Int): Encoded =
+    Encoding.encodeStore(
+      func   = func,
+      size   = size,
+      addrs0 = simpleAddr(addrS),
+    )
 
-  /** DMAInst: opcode[5:0]=4, func[6], size[15:8], addrs(0)[51:16]
-   *  (addrd(0) and DMAAddr are above bit 63, so zero with 64-bit AXI) */
-  def assembleDma(func: Int, size: Int, addrS: Int): BigInt = {
-    var inst = BigInt(4)                        // opcode = 4
-    inst |= BigInt(func & 0x1) << 6             // func
-    inst |= BigInt(size & 0xFF) << 8            // size
-    inst |= addrPkgBits(addrS) << 16            // addrs(0)
-    inst
-  }
+  def assembleDma(func: Int, size: Int, addrS: Int): Encoded =
+    Encoding.encodeDMA(
+      func    = func,
+      size    = size,
+      addrs0  = simpleAddr(addrS),
+      addrd0  = BigInt(0),
+      dmaAddr = 0,
+    )
 
-  /** SemProgInst: opcode[5:0]=5, semAddr[13:6], initValues[45:14]
-   *  Vec(2, UInt(16.W)): element 0 at lower bits [29:14], element 1 at [45:30] */
-  def assembleSemProg(semAddr: Int, init0: Int, init1: Int): BigInt = {
-    var inst = BigInt(5)                        // opcode = 5
-    inst |= BigInt(semAddr & 0xFF) << 6         // semAddr
-    inst |= BigInt(init0 & 0xFFFF) << 14        // initValues(0)
-    inst |= BigInt(init1 & 0xFFFF) << 30        // initValues(1)
-    inst
-  }
+  def assembleSemProg(semAddr: Int, init0: Int, init1: Int): Encoded =
+    // encodeSemProg parameter naming: init0 here = initValues(0) = fullReg
+    Encoding.encodeSemProg(semAddr = semAddr, initEmpty = init1, initFull = init0)
 
-  // ── Test helpers ──────────────────────────────────────────────────────────
+  // ── AXI-S streaming ───────────────────────────────────────────────────────
 
   def waitFor(clock: chisel3.Clock)(cond: => Boolean, msg: String): Unit = {
     var cycles = 0
@@ -79,11 +74,19 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
     }
   }
 
-  def sendInstruction(dut: FrontEnd, raw: BigInt): Unit = {
-    dut.io.AXIST.tdata.poke(raw.U(128.W))
-    dut.io.AXIST.tvalid.poke(true.B)
-    dut.io.AXIST.tkeep.poke("hffff".U)
-    dut.clock.step()
+  /** Pack `insts` into 128-bit beats and stream them via AXIST.  Multiple short
+    * instructions can land in a single beat; an Execute straddles two beats.
+    */
+  def sendInstructions(dut: FrontEnd, insts: Encoded*): Unit = {
+    for (beat <- Encoding.packBeats(insts)) {
+      dut.io.AXIST.tdata.poke(beat.U(128.W))
+      dut.io.AXIST.tvalid.poke(true.B)
+      dut.io.AXIST.tkeep.poke("hffff".U)
+      // Wait for tready so we don't drop a beat the receiver isn't accepting yet.
+      waitFor(dut.clock)(dut.io.AXIST.tready.peek().litToBoolean, "AXIST.tready")
+      dut.clock.step()
+    }
+    dut.io.AXIST.tvalid.poke(false.B)
   }
 
   def idleAXI(dut: FrontEnd): Unit = {
@@ -109,11 +112,9 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
     simulate(new FrontEnd()) { dut =>
       defaultPokes(dut)
 
-      // Send one execute instruction
-      sendInstruction(dut, assembleExe(mode = 0, size = 8, addr0 = 42))
+      sendInstructions(dut, assembleExe(mode = 0, size = 8, addr0 = 42))
       idleAXI(dut)
 
-      // It should appear on exeStream
       dut.io.exeStream.ready.poke(true.B)
       waitFor(dut.clock)(dut.io.exeStream.valid.peek().litToBoolean, "exeStream.valid")
 
@@ -122,7 +123,6 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.exeStream.bits.size.expect(8.U)
       dut.io.exeStream.bits.addrs(0).addr.expect(42.U)
 
-      // Other streams should be idle
       dut.io.loadStream.valid.expect(false.B)
       dut.io.storeStream.valid.expect(false.B)
       dut.io.dmaStream.valid.expect(false.B)
@@ -138,7 +138,7 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
     simulate(new FrontEnd()) { dut =>
       defaultPokes(dut)
 
-      sendInstruction(dut, assembleLd(func = 1, mode = 0, size = 16, addrD = 100))
+      sendInstructions(dut, assembleLd(func = 1, mode = 0, size = 16, addrD = 100))
       idleAXI(dut)
 
       dut.io.loadStream.ready.poke(true.B)
@@ -162,7 +162,7 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
     simulate(new FrontEnd()) { dut =>
       defaultPokes(dut)
 
-      sendInstruction(dut, assembleSt(func = 0, size = 32, addrS = 200))
+      sendInstructions(dut, assembleSt(func = 0, size = 32, addrS = 200))
       idleAXI(dut)
 
       dut.io.storeStream.ready.poke(true.B)
@@ -186,7 +186,7 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
     simulate(new FrontEnd()) { dut =>
       defaultPokes(dut)
 
-      sendInstruction(dut, assembleDma(func = 1, size = 64, addrS = 512))
+      sendInstructions(dut, assembleDma(func = 1, size = 64, addrS = 512))
       idleAXI(dut)
 
       dut.io.dmaStream.ready.poke(true.B)
@@ -212,7 +212,7 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
     simulate(new FrontEnd()) { dut =>
       defaultPokes(dut)
 
-      sendInstruction(dut, assembleSemProg(semAddr = 3, init0 = 10, init1 = 20))
+      sendInstructions(dut, assembleSemProg(semAddr = 3, init0 = 10, init1 = 20))
       idleAXI(dut)
 
       dut.io.semProgStream.ready.poke(true.B)
@@ -238,12 +238,14 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
     simulate(new FrontEnd()) { dut =>
       defaultPokes(dut)
 
-      // Send one of each type
-      sendInstruction(dut, assembleExe(mode = 1, size = 4, addr0 = 10))
-      sendInstruction(dut, assembleLd(func = 0, mode = 1, size = 8, addrD = 20))
-      sendInstruction(dut, assembleSt(func = 1, size = 16, addrS = 30))
-      sendInstruction(dut, assembleDma(func = 0, size = 32, addrS = 40))
-      sendInstruction(dut, assembleSemProg(semAddr = 1, init0 = 5, init1 = 15))
+      sendInstructions(
+        dut,
+        assembleExe(mode = 1, size = 4, addr0 = 10),
+        assembleLd(func = 0, mode = 1, size = 8, addrD = 20),
+        assembleSt(func = 1, size = 16, addrS = 30),
+        assembleDma(func = 0, size = 32, addrS = 40),
+        assembleSemProg(semAddr = 1, init0 = 5, init1 = 15),
+      )
       idleAXI(dut)
 
       // 1. Execute
@@ -297,15 +299,16 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
     simulate(new FrontEnd()) { dut =>
       defaultPokes(dut)
 
-      // Send two execute instructions while exeStream is not ready
-      sendInstruction(dut, assembleExe(mode = 0, size = 1, addr0 = 100))
-      sendInstruction(dut, assembleExe(mode = 0, size = 2, addr0 = 200))
+      sendInstructions(
+        dut,
+        assembleExe(mode = 0, size = 1, addr0 = 100),
+        assembleExe(mode = 0, size = 2, addr0 = 200),
+      )
       idleAXI(dut)
 
-      // Neither should be lost — first instruction should stall in the pipeline
+      // Let the pipeline fill while exeStream stays not-ready.
       dut.clock.step(5)
 
-      // Now accept them one by one
       dut.io.exeStream.ready.poke(true.B)
 
       waitFor(dut.clock)(dut.io.exeStream.valid.peek().litToBoolean, "first exe valid")

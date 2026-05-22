@@ -162,7 +162,7 @@ class ATA8Test extends AnyFreeSpec with Matchers with ChiselSim {
 
   "ATA8 should load, matmul, and store two 8x8 matrices through blocking semaphores" in {
     // sourceWidth=8 is required by TLXbar's ID-range scheme (10 IDs per master).
-    val testConfig = Configuration.default().copy(sourceWidth = 8)
+    val testConfig = Configuration.default().withBus(_.copy(sourceWidth = 8))
     simulate(new ATA8(testConfig)) { dut =>
       totalCycles = 0L
 
@@ -249,7 +249,7 @@ class ATA8Test extends AnyFreeSpec with Matchers with ChiselSim {
 
   "ATA8 should load, matmul, and store two 8x8 matrices through streaming semaphores" in {
     // sourceWidth=8 is required by TLXbar's ID-range scheme (10 IDs per master).
-    val testConfig = Configuration.default().copy(sourceWidth = 8)
+    val testConfig = Configuration.default().withBus(_.copy(sourceWidth = 8))
     simulate(new ATA8(testConfig)) { dut =>
       totalCycles = 0L
 
