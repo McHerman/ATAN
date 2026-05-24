@@ -5,7 +5,7 @@ import chisel3.util._
 
 class DualPortRAM[T <: Data](val size: Int, val dataType: T) extends Module {
   
-  var pointerwidth = log2Ceil(size - 1)
+  var pointerwidth = log2Ceil(size)
   
   val io = IO(new Bundle {
     val Write = Flipped(Valid(new Bundle{val addr = UInt(pointerwidth.W); val data = dataType.cloneType})) 
