@@ -15,7 +15,7 @@ import chisel3.util._
  * [[io.semaphoreA]] and [[io.semaphoreB]] are pass-through ports — connect
  * them to a SemaphoreBank (or crossbar) externally.
  */
-class MemDMA(implicit c: MemBusConfig) extends Module {
+class MemDMA(sourceIdA: Int = 0, sourceIdB: Int = 0)(implicit c: MemBusConfig) extends Module {
   val io = IO(new Bundle {
     val portA      = new TilelinkPort
     val portB      = new TilelinkPort
@@ -29,8 +29,8 @@ class MemDMA(implicit c: MemBusConfig) extends Module {
   io.interface.response.bits    := DontCare
 
   val tlDMAConfig = TLDMAConfig(read = true, write = true, semaphore = true)
-  val A = Module(new TLDMA(tlDMAConfig))
-  val B = Module(new TLDMA(tlDMAConfig))
+  val A = Module(new TLDMA(tlDMAConfig, sourceId = sourceIdA))
+  val B = Module(new TLDMA(tlDMAConfig, sourceId = sourceIdB))
 
   io.portA      <> A.io.tl
   io.portB      <> B.io.tl

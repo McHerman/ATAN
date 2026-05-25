@@ -149,7 +149,6 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     stepN(dut.clock)
   }
 
-
   "End-to-end no arg" in {
     val testConfig = Configuration.default().withBus(_.copy(sourceWidth = 8))
     val msCfg = MemSystemConfig.default().copy(sourceWidth = testConfig.sourceWidth)
@@ -358,8 +357,17 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
   }
 
 
+
   "End-to-end large with arguments" in {
-    val testConfig = Configuration.default().withBus(_.copy(sourceWidth = 8))
+    /*
+    val testConfig = Configuration.default().withBus(_.copy(sourceWidth = 8)
+      .withSemaphore(_.copy(nSemaphores = 32))
+    )*/
+
+    val testConfig = Configuration
+      .default()
+      .withBus(_.copy(sourceWidth = 8))
+      .withSemaphore(_.copy(nSemaphores = 32))
     val msCfg = MemSystemConfig.default().copy(sourceWidth = testConfig.sourceWidth)
     val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize, verbose = true))
 
@@ -449,6 +457,7 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
       }
     }
   }
+
   /*
   "End-to-end XL with 32 semaphores" in {
     val testConfig = Configuration

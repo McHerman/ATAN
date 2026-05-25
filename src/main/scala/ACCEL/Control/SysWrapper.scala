@@ -22,10 +22,14 @@ class SysWrapper(implicit c: Configuration) extends Module {
   //val WriteDMA = Seq.fill(c.grainDim)(Module(new SysWriteDMA()))
 
   val dmaReadConf = TLDMAConfig(read = true, write = false, semaphore = true)
-  val ReadDMA = Seq.fill(2, c.grainDim)(Module(new TLDMA(dmaReadConf)))
+  val ReadDMA = Seq.tabulate(2, c.grainDim) { (i, j) =>
+    Module(new TLDMA(dmaReadConf, sourceId = 3 + i * c.grainDim + j))
+  }
 
   val dmaWriteConf = TLDMAConfig(read = false, write = true, semaphore = true)
-  val WriteDMA = Seq.fill(c.grainDim)(Module(new TLDMA(dmaWriteConf)))
+  val WriteDMA = Seq.tabulate(c.grainDim) { j =>
+    Module(new TLDMA(dmaWriteConf, sourceId = 3 + 2 * c.grainDim + j))
+  }
 
 
   SysController.io.in  <> io.in

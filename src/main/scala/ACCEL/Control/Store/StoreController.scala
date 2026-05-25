@@ -14,7 +14,7 @@ class StoreController(implicit c: Configuration) extends Module {
   })
 
   val dmaConf = TLDMAConfig(read = true, write = false, semaphore = true)
-  val StoreDMA = Module(new TLDMA(dmaConf))
+  val StoreDMA = Module(new TLDMA(dmaConf, sourceId = 2))
 
   io.instructionStream.request.valid := false.B
   io.instructionStream.request.bits := DontCare

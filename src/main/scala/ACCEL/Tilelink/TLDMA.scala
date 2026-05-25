@@ -14,7 +14,7 @@ case class TLDMAConfig(
 /**
  * Parameterised single-channel DMA engine.
  */
-class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
+class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) extends Module {
   val io = IO(new Bundle {
     val tl        = new TilelinkPort
     val semaphoreIF = if (config.semaphore) Some(new TilelinkPort) else None
@@ -102,7 +102,7 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
         io.tl.a.bits.param   := 0.U
         io.tl.a.bits.address := effectiveAddr
         io.tl.a.bits.size    := effectiveSize
-        io.tl.a.bits.source  := 0.U
+        io.tl.a.bits.source  := sourceId.U
         io.tl.a.bits.data    := dataIn.response.bits.readData
         io.tl.a.bits.mask    := HelperFunctions.uintToBoolVec(effectiveSize, c.dataBusSize).asUInt
 
@@ -128,7 +128,7 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
         io.tl.a.bits.param   := 0.U
         io.tl.a.bits.address := effectiveAddr
         io.tl.a.bits.size    := effectiveSize
-        io.tl.a.bits.source  := 0.U
+        io.tl.a.bits.source  := sourceId.U
         io.tl.a.bits.data    := dataIn.response.bits.readData
         io.tl.a.bits.corrupt := 0.U
 
@@ -183,7 +183,7 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
         io.tl.a.bits.param   := 0.U
         io.tl.a.bits.address := effectiveAddr
         io.tl.a.bits.size    := effectiveSize
-        io.tl.a.bits.source  := 0.U
+        io.tl.a.bits.source  := sourceId.U
         io.tl.a.bits.corrupt := 0.U
 
         when(io.tl.a.fire) {
@@ -254,7 +254,7 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
         sem.a.bits.opcode  := TilelinkOpcodes.ArithmeticData
         sem.a.bits.param   := ArithmeticDataParam.AQGREQ
         sem.a.bits.size    := 0.U
-        sem.a.bits.source  := 0.U
+        sem.a.bits.source  := sourceId.U
         sem.a.bits.address := semAcquireAddr
         sem.a.bits.data    := reg.semaphore.get.semStepSize
         sem.a.bits.mask    := Fill(c.dataBusSize, 1.U(1.W))
@@ -279,7 +279,7 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
         sem.a.bits.opcode  := TilelinkOpcodes.ArithmeticData
         sem.a.bits.param   := ArithmeticDataParam.SUBU
         sem.a.bits.size    := 0.U
-        sem.a.bits.source  := 0.U
+        sem.a.bits.source  := sourceId.U
         sem.a.bits.address := semAcquireAddr
         sem.a.bits.data    := reg.semaphore.get.semStepSize
         sem.a.bits.mask    := Fill(c.dataBusSize, 1.U(1.W))
@@ -308,7 +308,7 @@ class TLDMA(config: TLDMAConfig)(implicit c: MemBusConfig) extends Module {
         sem.a.bits.opcode  := TilelinkOpcodes.ArithmeticData
         sem.a.bits.param   := ArithmeticDataParam.ADDU
         sem.a.bits.size    := 0.U
-        sem.a.bits.source  := 0.U
+        sem.a.bits.source  := sourceId.U
         sem.a.bits.address := semReleaseAddr
         sem.a.bits.data    := reg.semaphore.get.semStepSize
         sem.a.bits.mask    := Fill(c.dataBusSize, 1.U(1.W))

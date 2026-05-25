@@ -21,7 +21,7 @@ class LoadController(implicit c: Configuration) extends Module {
 
 
   val dmaConf = TLDMAConfig(read = false, write = true, semaphore = true)
-  val ReadDMA = Module(new TLDMA(dmaConf))
+  val ReadDMA = Module(new TLDMA(dmaConf, sourceId = 1))
 
 
   io.instructionStream.request.valid := false.B
