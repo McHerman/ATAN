@@ -16,6 +16,13 @@ test-only class:
 test-only-trace class:
     mill ATAN.test.testOnly ATA8.{{class}} -- -DemitVcd=1
 
+# Run a single test case within a class (e.g. just test-case ATA8.LoadTest "loads correctly")
+test-case class name:
+    mill ATAN.test.testOnly ATA8.{{class}} -- -z {{quote(name)}}
+
+test-case-trace class name:
+    mill ATAN.test.testOnly ATA8.{{class}} -- -DemitVcd=1 -z {{quote(name)}}
+
 # Generate SystemVerilog
 verilog:
     mill ATAN.run
