@@ -13,6 +13,12 @@ case class AssemblerConfig(
   dataBusBytes: Int = 8,
   /** Number of memory tiers in the hardware (used to map FB tier numbering to hardware tier indices). */
   nTiers: Int = 3,
+  /** Width of the generation tag (in bits) baked into the LSBs of every
+    * semaphore TL address. Must match `SemaphoreParams.generationWidth`
+    * on the hardware side. With the default 0 the address layout reduces
+    * to the legacy `semAddr * 4 + 0/2` form.
+    */
+  semaphoreGenerationWidth: Int = 0,
   /** When true, the assembler prints a decoded trace of each lowered instruction. */
   verbose: Boolean = false,
 )
@@ -124,9 +130,10 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
   private def lowerSemAlloc(op: Operation): Lowered = {
     val sem = op.command(new SemAlloc()).asInstanceOf[SemAlloc]
     Lowered(Seq(Encoding.encodeSemProg(
-      semAddr   = sem.address(),
-      initEmpty = sem.emptyCount().toInt,
-      initFull  = sem.fullCount().toInt,
+      semAddr    = sem.address(),
+      initEmpty  = sem.emptyCount().toInt,
+      initFull   = sem.fullCount().toInt,
+      generation = sem.generation(),
     )), Seq.empty)
   }
 
@@ -284,6 +291,28 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     }
   }
 
+  /** Pack a SemDep into the addrPkg semAddr field. Layout (LSB → MSB):
+    *   [genWidth-1 : 0]   generation tag (matched against the semaphore's
+    *                      internal register; mismatches are denied by the
+    *                      semaphore module — the xbar treats these as
+    *                      routing don't-care)
+    *   [genWidth]         register select (0 = fullReg, 1 = emptyReg) —
+    *                      filled by TLDMA at runtime; the assembler leaves
+    *                      this bit as 0
+    *   [genWidth+1]       port select within a semaphore (acquire = 0,
+    *                      require = 1) so the producer and consumer don't
+    *                      contend for the same TL slave port
+    *   [genWidth+2 : ...] semaphore index (FB sem_address)
+    */
+  private def packSemAddr(semIndex: Int, generation: Int, isAcquire: Boolean): Int = {
+    val genWidth        = config.semaphoreGenerationWidth
+    val semIndexShift   = genWidth + 2
+    val portSelectShift = genWidth + 1
+    val genMask         = (1 << genWidth) - 1
+    val portBit         = if (isAcquire) 0 else 1
+    (semIndex << semIndexShift) | (portBit << portSelectShift) | (generation & genMask)
+  }
+
   /** Find a semaphore dependency that guards a buffer by index, searching
     * either acquires (producer-side) or requires (consumer-side).
     */
@@ -297,14 +326,8 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
 
     for (i <- 0 until count) {
       val dep = getDep(i)
-
-      val adjusted = dep.semAddress * 4
-
-      // To ensure that the producer and consumer doesnt request the same memory port
-      val offset = if (isAcquire) 0 else 2
-
       if (dep.bufferId() == bufferId)
-        return Some(adjusted + offset)
+        return Some(packSemAddr(dep.semAddress(), dep.generation(), isAcquire))
     }
     None
   }
@@ -391,9 +414,14 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     val sb = new StringBuilder
     sb ++= f"addr=0x${addr}%04x"
     if (semV != 0) {
-      val role = addrPkgRole.getOrElse(fieldName, "")
-      sb ++= f", sem=$semA%d"
+      val role     = addrPkgRole.getOrElse(fieldName, "")
+      val genWidth = config.semaphoreGenerationWidth
+      val genMask  = (BigInt(1) << genWidth) - 1
+      val semIndex = semA >> (genWidth + 2)
+      val generation = semA & genMask
+      sb ++= f", sem=$semIndex%d"
       if (role.nonEmpty) sb ++= s" ($role)"
+      if (genWidth > 0) sb ++= f", gen=$generation%d"
       if (stepV != 0) sb ++= f", step=$stepSize%d"
     }
     sb.result()

@@ -11,6 +11,9 @@ object InstructionSet {
   /** AXI-S beat width feeding the front-end realigner. */
   val BeatBits = 128
 
+  /** Bits reserved for the semaphore gen tag; hardware may use fewer. */
+  val SemGenerationBits = 4
+
   /** Granularity of the variable-length instruction encoding. */
   val SlotBits = 64
 
@@ -73,7 +76,12 @@ object InstructionSet {
 
     val fields: Seq[Field] = Seq(addr, semValid, semAddr, semStepSizeValid, semStepSizeBits)
 
-    /** Encode an addrPkg value (42-bit BigInt). */
+    /** Encode an addrPkg value (42-bit BigInt). The `semAddr` field is a
+      * byte-level TL address into the semaphore xbar — the assembler is
+      * responsible for shifting the semaphore index/port into position and
+      * baking the generation tag into the LSBs (the xbar treats those bits
+      * as routing don't-care; the semaphore module validates them).
+      */
     def encode(
       addr: Int,
       semValid: Boolean = false,
@@ -159,9 +167,10 @@ object InstructionSet {
   val SemProg = InstructionLayout(5, slots = 1, Seq(
     LengthField,
     OpcodeField,
-    Field("semAddr",      8, 8),
+    Field("semAddr",      8,  8),
     Field("initValues0", 16, 16),
     Field("initValues1", 32, 16),
+    Field("generation",  48, SemGenerationBits),
   ))
 
   /** All instruction layouts indexed by opcode. */

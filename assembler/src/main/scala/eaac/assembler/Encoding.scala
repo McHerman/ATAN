@@ -88,16 +88,20 @@ object Encoding {
 
   /** Encode a SemProg instruction (1 slot / 64 b).
     * Hardware convention: initValues(0) = fullReg, initValues(1) = emptyReg.
+    * `generation` is masked to [[InstructionSet.SemGenerationBits]] bits;
+    * the hardware ignores any bits beyond its configured genWidth.
     */
   def encodeSemProg(
     semAddr: Int,
     initEmpty: Int,
     initFull: Int,
+    generation: Int = 0,
   ): Encoded = Encoded(
     SemProg.encode(Map(
       "semAddr"     -> BigInt(semAddr),
       "initValues0" -> BigInt(initFull),
       "initValues1" -> BigInt(initEmpty),
+      "generation"  -> BigInt(generation),
     )),
     SemProg.slots,
   )

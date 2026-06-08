@@ -228,14 +228,7 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
   }
 
   // ── Semaphore states ────────────────────────────────────────────────────
-  // The semaphore address is treated as a base:
-  //   base + 0 = fullReg,  base + 1 = emptyReg
-  //
-  // Direction is derived from writeEn (or statically from config):
-  //   writer = producer: acquire/SUBU on emptyReg (base+1), release/ADDU on fullReg (base+0)
-  //   reader = consumer: acquire/SUBU on fullReg  (base+0), release/ADDU on emptyReg (base+1)
-  //
-  // Flow: semAcquireSend/Respond(AQGREQ) → semDecrementSend/Respond(SUBU) → read/write → semReleaseSend/Respond(ADDU)
+  // Assembler bakes gen/port/sem into semAddr; TLDMA only flips the register-select bit (shifted by genWidth).
   if (config.semaphore) {
     val sem = io.semaphoreIF.get
 
@@ -244,8 +237,10 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
       case (_, true)    => true.B   // write-only → always producer
       case _            => false.B  // read-only  → always consumer
     }
-    val semAcquireAddr = reg.semaphore.get.semAddr + isProducer.asUInt
-    val semReleaseAddr = reg.semaphore.get.semAddr + (!isProducer).asUInt
+
+    val regSelShift = c.semaphoreGenerationWidth
+    val semAcquireAddr = reg.semaphore.get.semAddr + (isProducer.asUInt    << regSelShift)
+    val semReleaseAddr = reg.semaphore.get.semAddr + ((!isProducer).asUInt << regSelShift)
 
     switch(StateReg) {
       // SemAcquireSend – AQGREQ, stall until semaphore condition is met
@@ -268,8 +263,13 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
       is(semAcquireRespond) {
         sem.d.ready := true.B
 
+        // denied = gen mismatch → spinwait by re-issuing.
         when(sem.d.fire) {
-          StateReg := semDecrementSend
+          when(sem.d.bits.denied.asBool) {
+            StateReg := semAcquireSend
+          }.otherwise {
+            StateReg := semDecrementSend
+          }
         }
       }
 
@@ -294,11 +294,17 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
         sem.d.ready := true.B
 
         when(sem.d.fire) {
-          StateReg := ((config.read, config.write) match {
-            case (true, true) => Mux(isWrite.get, writeFirst, readIssue)
-            case (_, true)    => writeFirst
-            case _            => readIssue
-          })
+          when(sem.d.bits.denied.asBool) {
+            StateReg := semDecrementSend
+          }.otherwise {
+            (config.read, config.write) match {
+              case (true, true) =>
+                when(isWrite.get) { StateReg := writeFirst }
+                  .otherwise      { StateReg := readIssue  }
+              case (_, true) => StateReg := writeFirst
+              case _         => StateReg := readIssue
+            }
+          }
         }
       }
 
@@ -320,21 +326,26 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
       }
 
       is(semReleaseRespond) {
-        sem.d.ready := true.B 
+        sem.d.ready := true.B
 
         when(sem.d.fire) {
-          val next = remaining.get - reg.semaphore.get.semStepSize
-          remaining.get := next
-
-          when(next > 0.U) {
-            effectiveAddr := effectiveAddr + reg.semaphore.get.semStepSize
-            StateReg := semAcquireSend
+          when(sem.d.bits.denied.asBool) {
+            // gen mismatch: retry without advancing remaining/effectiveAddr.
+            StateReg := semReleaseSend
           }.otherwise {
-            StateReg := ((config.read, config.write) match {
-              case (true, true) => Mux(isWrite.get, writeRespond, readRespond)
-              case (_, true)    => writeRespond
-              case _            => readRespond
-            })
+            val next = remaining.get - reg.semaphore.get.semStepSize
+            remaining.get := next
+
+            when(next > 0.U) {
+              effectiveAddr := effectiveAddr + reg.semaphore.get.semStepSize
+              StateReg := semAcquireSend
+            }.otherwise {
+              StateReg := ((config.read, config.write) match {
+                case (true, true) => Mux(isWrite.get, writeRespond, readRespond)
+                case (_, true)    => writeRespond
+                case _            => readRespond
+              })
+            }
           }
         }
       }

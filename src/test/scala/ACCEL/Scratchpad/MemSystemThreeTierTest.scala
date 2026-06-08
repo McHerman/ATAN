@@ -37,7 +37,7 @@ class ThreeTierDUT(msCfg: MemSystemConfig, bankCfg: Configuration) extends Modul
     val tier0Write          = Flipped(new TilelinkPort()(msCfg))
     val tier0Read           = Flipped(new TilelinkPort()(msCfg))
     val dmaInstructionStream = Flipped(Decoupled(new DMAInst()(bankCfg)))
-    val semProgPort         = Flipped(Decoupled(new SemaphoreProgPort))
+    val semProgPort         = Flipped(Decoupled(new SemaphoreProgPort()(bankCfg)))
   })
 
   io.tier0Write          <> memSys.io.tier0WritePorts(0)
@@ -100,7 +100,7 @@ class HostInDUT(msCfg: MemSystemConfig, bankCfg: Configuration) extends Module {
     val tier0Write           = Flipped(new TilelinkPort()(msCfg))
     val tier0Read            = Flipped(new TilelinkPort()(msCfg))
     val dmaInstructionStream = Flipped(Decoupled(new DMAInst()(bankCfg)))
-    val semProgPort          = Flipped(Decoupled(new SemaphoreProgPort))
+    val semProgPort          = Flipped(Decoupled(new SemaphoreProgPort()(bankCfg)))
   })
 
   io.hostIn              <> memSys.io.hostIn

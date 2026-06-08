@@ -368,6 +368,7 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
       .default()
       .withBus(_.copy(sourceWidth = 8))
       .withSemaphore(_.copy(nSemaphores = 32))
+      .withSemaphore(_.copy(generationWidth = 2))
     val msCfg = MemSystemConfig.default().copy(sourceWidth = testConfig.sourceWidth)
     val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize, verbose = true))
 

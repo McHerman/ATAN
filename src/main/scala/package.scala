@@ -10,6 +10,8 @@ package object ATA8 {
     def arithDataWidth: Int
     def addrWidth: Int
     def sourceWidth: Int
+    // Width of the gen tag in the LSBs of every semaphore TL address.
+    def semaphoreGenerationWidth: Int = 0
   }
 
   // ── Logical parameter groups ───────────────────────────────────────────
@@ -54,8 +56,10 @@ package object ATA8 {
 
   /** Semaphore-system parameters. */
   case class SemaphoreParams(
-    nSemaphores: Int = 8,
-    queueSize:   Int = 2,
+    nSemaphores:     Int = 8,
+    queueSize:       Int = 2,
+    // 0 disables the gen check and preserves the legacy 2-address-per-port layout.
+    generationWidth: Int = 0,
   )
 
   case class Configuration(
@@ -79,8 +83,9 @@ package object ATA8 {
     def accDataWidth     = data.accDataWidth
     def modeWidth        = data.modeWidth
     def tagCount            = control.tagCount
-    def nSemaphores         = semaphore.nSemaphores
-    def semaphoreQueueSize  = semaphore.queueSize
+    def nSemaphores             = semaphore.nSemaphores
+    def semaphoreQueueSize      = semaphore.queueSize
+    override def semaphoreGenerationWidth = semaphore.generationWidth
     def addrWidth           = bus.addrWidth
     def dataBusSize         = bus.dataBusSize
     def sourceWidth         = bus.sourceWidth
@@ -101,6 +106,7 @@ package object ATA8 {
     require(accDataWidth >= arithDataWidth, "accDataWidth must be >= arithDataWidth")
     require(accDataWidth % 8 == 0, "accDataWidth must be a multiple of 8")
     require(nSemaphores > 0, "nSemaphores must be positive")
+    require(semaphoreGenerationWidth >= 0, "semaphoreGenerationWidth must be non-negative")
   }
 
   object Configuration {

@@ -3,9 +3,10 @@ package ATA8
 import chisel3._
 import chisel3.util._
 
-class SemaphoreProgPort() extends Bundle {
+class SemaphoreProgPort()(implicit c: Configuration) extends Bundle {
   val initValues = Vec(2, UInt(16.W))
-  val addr = UInt(16.W)
+  val addr       = UInt(16.W)
+  val generation = UInt(c.semaphoreGenerationWidth.W)
 }
 
 class SemaphoreBank(noPorts: Int)(implicit c: Configuration) extends Module {
@@ -15,23 +16,27 @@ class SemaphoreBank(noPorts: Int)(implicit c: Configuration) extends Module {
   })
 
   val noSemaphores = c.nSemaphores
+  val genWidth     = c.semaphoreGenerationWidth
 
   val semaphores = VecInit(Seq.fill(noSemaphores)(Module(new Semaphore()).io))
 
   semaphores.zipWithIndex.foreach { case (sem, i) =>
-    sem.progPort.valid := io.progPort.valid && (io.progPort.bits.addr === i.U)
-    sem.progPort.bits  := io.progPort.bits.initValues
+    sem.progPort.valid             := io.progPort.valid && (io.progPort.bits.addr === i.U)
+    sem.progPort.bits.initValues   := io.progPort.bits.initValues
+    sem.progPort.bits.generation   := io.progPort.bits.generation
   }
 
   io.progPort.ready := semaphores(io.progPort.bits.addr).progPort.ready
 
 
-  // Each semaphore has 2 independently addressed ports that alias the same physical registers.
-  // Port j of semaphore i occupies addresses (i*4 + j*2) and (i*4 + j*2 + 1).
-  // Bit 0 of the address selects the register (full/empty); the semaphore handles arbitration.
+  // Address LSBs: [gen | regSel | portSel | semIdx]. xbar treats gen + regSel as routing don't-care.
+  val perSlaveStride = 2 << genWidth
+  val perSlaveMask   = perSlaveStride - 1
   val xbarConfig = TLXbarConfig(
     nMasters = noPorts,
-    slaves = Seq.tabulate(noSemaphores * 2)(i => TLSlaveConfig(Seq((BigInt(i * 2), BigInt(0x1))))),
+    slaves = Seq.tabulate(noSemaphores * 2)(i =>
+      TLSlaveConfig(Seq((BigInt(i) * BigInt(perSlaveStride), BigInt(perSlaveMask))))
+    ),
     //arbiterPolicy = "lock"
     arbiterPolicy = "roundRobin"
   )(c)

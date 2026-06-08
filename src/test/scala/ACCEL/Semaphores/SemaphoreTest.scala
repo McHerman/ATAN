@@ -23,8 +23,8 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.inPorts(i).d.ready.poke(false.B)
     }
     dut.io.progPort.valid.poke(false.B)
-    dut.io.progPort.bits(0).poke(0.U)
-    dut.io.progPort.bits(1).poke(0.U)
+    dut.io.progPort.bits.initValues(0).poke(0.U)
+    dut.io.progPort.bits.initValues(1).poke(0.U)
   }
 
   // Producer (port 0): AQGREQ(empty>=1) → SUBU(empty,1) → ADDU(full,1), repeated
@@ -34,8 +34,8 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
   def producerConsumerRun(dut: Semaphore, bufferSize: Int, transfers: Int): Unit = {
     defaultPokes(dut)
     dut.io.progPort.valid.poke(true.B)
-    dut.io.progPort.bits(0).poke(0.U)
-    dut.io.progPort.bits(1).poke(bufferSize.U)
+    dut.io.progPort.bits.initValues(0).poke(0.U)
+    dut.io.progPort.bits.initValues(1).poke(bufferSize.U)
     dut.clock.step()
     dut.io.progPort.valid.poke(false.B)
 
@@ -155,8 +155,8 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
     simulate(new Semaphore()) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
-      dut.io.progPort.bits(0).poke(42.U)
-      dut.io.progPort.bits(1).poke(7.U)
+      dut.io.progPort.bits.initValues(0).poke(42.U)
+      dut.io.progPort.bits.initValues(1).poke(7.U)
       dut.clock.step()
       dut.io.progPort.valid.poke(false.B)
 
@@ -193,8 +193,8 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
     simulate(new Semaphore()) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
-      dut.io.progPort.bits(0).poke(42.U)
-      dut.io.progPort.bits(1).poke(7.U)
+      dut.io.progPort.bits.initValues(0).poke(42.U)
+      dut.io.progPort.bits.initValues(1).poke(7.U)
       dut.clock.step()
       dut.io.progPort.valid.poke(false.B)
 
@@ -233,8 +233,8 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
     simulate(new Semaphore()) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
-      dut.io.progPort.bits(0).poke(20.U)
-      dut.io.progPort.bits(1).poke(15.U)
+      dut.io.progPort.bits.initValues(0).poke(20.U)
+      dut.io.progPort.bits.initValues(1).poke(15.U)
       dut.clock.step()
       dut.io.progPort.valid.poke(false.B)
 
@@ -306,8 +306,8 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
     simulate(new Semaphore()) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
-      dut.io.progPort.bits(0).poke(5.U)
-      dut.io.progPort.bits(1).poke(3.U)
+      dut.io.progPort.bits.initValues(0).poke(5.U)
+      dut.io.progPort.bits.initValues(1).poke(3.U)
       dut.clock.step()
       dut.io.progPort.valid.poke(false.B)
 
@@ -374,8 +374,8 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
     simulate(new Semaphore()) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
-      dut.io.progPort.bits(0).poke(50.U)
-      dut.io.progPort.bits(1).poke(30.U)
+      dut.io.progPort.bits.initValues(0).poke(50.U)
+      dut.io.progPort.bits.initValues(1).poke(30.U)
       dut.clock.step()
       dut.io.progPort.valid.poke(false.B)
 
@@ -421,8 +421,8 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
     simulate(new Semaphore()) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
-      dut.io.progPort.bits(0).poke(0.U)
-      dut.io.progPort.bits(1).poke(20.U)  // emptyReg = 20
+      dut.io.progPort.bits.initValues(0).poke(0.U)
+      dut.io.progPort.bits.initValues(1).poke(20.U)  // emptyReg = 20
       dut.clock.step()
       dut.io.progPort.valid.poke(false.B)
 
@@ -501,8 +501,8 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
     simulate(new Semaphore()) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
-      dut.io.progPort.bits(0).poke(50.U)  // fullReg  = 50
-      dut.io.progPort.bits(1).poke(30.U)  // emptyReg = 30
+      dut.io.progPort.bits.initValues(0).poke(50.U)  // fullReg  = 50
+      dut.io.progPort.bits.initValues(1).poke(30.U)  // emptyReg = 30
       dut.clock.step()
       dut.io.progPort.valid.poke(false.B)
 
@@ -562,8 +562,8 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
     simulate(new Semaphore()) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
-      dut.io.progPort.bits(0).poke(0.U)
-      dut.io.progPort.bits(1).poke(60.U)  // emptyReg = 60; 3 rounds * (4+6) = 30 total decrement
+      dut.io.progPort.bits.initValues(0).poke(0.U)
+      dut.io.progPort.bits.initValues(1).poke(60.U)  // emptyReg = 60; 3 rounds * (4+6) = 30 total decrement
       dut.clock.step()
       dut.io.progPort.valid.poke(false.B)
 
@@ -643,8 +643,8 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
     simulate(new Semaphore()) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
-      dut.io.progPort.bits(0).poke(10.U)  // fullReg  = 10
-      dut.io.progPort.bits(1).poke(5.U)   // emptyReg = 5
+      dut.io.progPort.bits.initValues(0).poke(10.U)  // fullReg  = 10
+      dut.io.progPort.bits.initValues(1).poke(5.U)   // emptyReg = 5
       dut.clock.step()
       dut.io.progPort.valid.poke(false.B)
 
@@ -695,8 +695,8 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
     simulate(new Semaphore()) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
-      dut.io.progPort.bits(0).poke(0.U)
-      dut.io.progPort.bits(1).poke(20.U)  // emptyReg = 20
+      dut.io.progPort.bits.initValues(0).poke(0.U)
+      dut.io.progPort.bits.initValues(1).poke(20.U)  // emptyReg = 20
       dut.clock.step()
       dut.io.progPort.valid.poke(false.B)
 
@@ -772,8 +772,8 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       defaultPokes(dut)
 
       dut.io.progPort.valid.poke(true.B)
-      dut.io.progPort.bits(0).poke(10.U)
-      dut.io.progPort.bits(1).poke(0.U)
+      dut.io.progPort.bits.initValues(0).poke(10.U)
+      dut.io.progPort.bits.initValues(1).poke(0.U)
       dut.clock.step()
       dut.io.progPort.valid.poke(false.B)
 
@@ -812,8 +812,8 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       // Attempt reprogram
       /*
       dut.io.progPort.valid.poke(true.B)
-      dut.io.progPort.bits(0).poke(99.U)
-      dut.io.progPort.bits(1).poke(77.U)
+      dut.io.progPort.bits.initValues(0).poke(99.U)
+      dut.io.progPort.bits.initValues(1).poke(77.U)
       dut.clock.step()
       dut.io.progPort.valid.poke(false.B)
       */
@@ -852,16 +852,16 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       // Attempt reprogram
       /*
       dut.io.progPort.valid.poke(true.B)
-      dut.io.progPort.bits(0).poke(99.U)
-      dut.io.progPort.bits(1).poke(77.U)
+      dut.io.progPort.bits.initValues(0).poke(99.U)
+      dut.io.progPort.bits.initValues(1).poke(77.U)
       dut.clock.step()
       dut.io.progPort.valid.poke(false.B)
       */
 
       dut.io.progPort.ready.expect(true.B)
       dut.io.progPort.valid.poke(true.B)
-      dut.io.progPort.bits(0).poke(99.U)
-      dut.io.progPort.bits(1).poke(77.U)
+      dut.io.progPort.bits.initValues(0).poke(99.U)
+      dut.io.progPort.bits.initValues(1).poke(77.U)
       dut.clock.step()
       dut.io.progPort.valid.poke(false.B)
 
@@ -927,8 +927,8 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       defaultPokes(dut)
 
       dut.io.progPort.valid.poke(true.B)
-      dut.io.progPort.bits(0).poke(0.U) // fullReg
-      dut.io.progPort.bits(1).poke(5.U)  // emptyReg
+      dut.io.progPort.bits.initValues(0).poke(0.U) // fullReg
+      dut.io.progPort.bits.initValues(1).poke(5.U)  // emptyReg
       dut.clock.step()
       dut.io.progPort.valid.poke(false.B)
 
