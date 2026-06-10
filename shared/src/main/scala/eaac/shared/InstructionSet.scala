@@ -14,6 +14,9 @@ object InstructionSet {
   /** Bits reserved for the semaphore gen tag; hardware may use fewer. */
   val SemGenerationBits = 4
 
+  val MaxSemDeps     = 3
+  val SemDepAddrBits = 8
+
   /** Granularity of the variable-length instruction encoding. */
   val SlotBits = 64
 
@@ -164,13 +167,17 @@ object InstructionSet {
     Field("DMAAddr", 110, 4),
   ))
 
-  val SemProg = InstructionLayout(5, slots = 1, Seq(
+  val SemProg = InstructionLayout(5, slots = 2, Seq(
     LengthField,
     OpcodeField,
     Field("semAddr",      8,  8),
     Field("initValues0", 16, 16),
     Field("initValues1", 32, 16),
     Field("generation",  48, SemGenerationBits),
+    Field("depCount",    48 +     SemGenerationBits, 2),
+    Field("dep0",        48 + 2 + SemGenerationBits + 0 * SemDepAddrBits, SemDepAddrBits),
+    Field("dep1",        48 + 2 + SemGenerationBits + 1 * SemDepAddrBits, SemDepAddrBits),
+    Field("dep2",        48 + 2 + SemGenerationBits + 2 * SemDepAddrBits, SemDepAddrBits),
   ))
 
   /** All instruction layouts indexed by opcode. */
