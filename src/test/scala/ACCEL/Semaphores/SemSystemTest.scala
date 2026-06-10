@@ -30,9 +30,9 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
     }
     dut.io.instructionStream.valid.poke(false.B)
     dut.io.instructionStream.bits.opcode.poke(0.U)
-    dut.io.instructionStream.bits.semAddr.poke(0.U)
-    dut.io.instructionStream.bits.initValues(0).poke(0.U)
-    dut.io.instructionStream.bits.initValues(1).poke(0.U)
+    dut.io.instructionStream.bits.payload.semAddr.poke(0.U)
+    dut.io.instructionStream.bits.payload.initValues(0).poke(0.U)
+    dut.io.instructionStream.bits.payload.initValues(1).poke(0.U)
   }
 
   def sendAndReceive(dut: SemSystem, masterIdx: Int, req: TLReq): BigInt = {
@@ -76,9 +76,9 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       // Enqueue: program semaphore 0 with full=20, empty=5
       dut.io.instructionStream.valid.poke(true.B)
-      dut.io.instructionStream.bits.semAddr.poke(0.U)
-      dut.io.instructionStream.bits.initValues(0).poke(20.U)
-      dut.io.instructionStream.bits.initValues(1).poke(5.U)
+      dut.io.instructionStream.bits.payload.semAddr.poke(0.U)
+      dut.io.instructionStream.bits.payload.initValues(0).poke(20.U)
+      dut.io.instructionStream.bits.payload.initValues(1).poke(5.U)
 
       var cycles = 0
       while (!dut.io.instructionStream.ready.peek().litToBoolean) {
@@ -115,9 +115,9 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       for ((semIdx, fullVal, emptyVal) <- programs) {
         dut.io.instructionStream.valid.poke(true.B)
-        dut.io.instructionStream.bits.semAddr.poke(semIdx.U)
-        dut.io.instructionStream.bits.initValues(0).poke(fullVal.U)
-        dut.io.instructionStream.bits.initValues(1).poke(emptyVal.U)
+        dut.io.instructionStream.bits.payload.semAddr.poke(semIdx.U)
+        dut.io.instructionStream.bits.payload.initValues(0).poke(fullVal.U)
+        dut.io.instructionStream.bits.payload.initValues(1).poke(emptyVal.U)
 
         var cycles = 0
         while (!dut.io.instructionStream.ready.peek().litToBoolean) {
@@ -142,57 +142,88 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
     }
   }
 
-  "Reprogramming stalls until semaphore counters reach zero" in {
-    simulate(new SemSystem(noPorts)) { dut =>
-      defaultPokes(dut)
+  "Two virtual sems on the same physical sem are serialized by chain dep" in {
+    implicit val cChain: Configuration = Configuration.default()
+      .withBus(_.copy(sourceWidth = 8))
+      .withSemaphore(_.copy(generationWidth = 3, queueSize = 4))
 
-      dut.io.instructionStream.valid.poke(true.B)
-      dut.io.instructionStream.bits.semAddr.poke(2.U)
-      dut.io.instructionStream.bits.initValues(0).poke(3.U)
-      dut.io.instructionStream.bits.initValues(1).poke(0.U)
+    val gw            = cChain.semaphoreGenerationWidth
+    val perSlave      = 2 << gw
+    val semIdxTarget  = 2
+    val gen0          = 0
+    val gen1          = 1
+    def tlAddr(semIdx: Int, portIdx: Int, reg: Int, gen: Int): Int =
+      (semIdx * 2 + portIdx) * perSlave + (reg << gw) + gen
+    def fusedAddr(semIdx: Int, gen: Int): Int = (semIdx << gw) | gen
+    val depAddr = fusedAddr(semIdxTarget, gen0)
 
-      var cycles = 0
-      while (!dut.io.instructionStream.ready.peek().litToBoolean) {
-        dut.clock.step(); cycles += 1
-        require(cycles < 50, "Timeout on first enqueue")
+    simulate(new SemSystem(noPorts)(cChain)) { dut =>
+      for (i <- 0 until noPorts) {
+        dut.io.inPorts(i).a.valid.poke(false.B)
+        dut.io.inPorts(i).a.bits.opcode.poke(0.U)
+        dut.io.inPorts(i).a.bits.param.poke(0.U)
+        dut.io.inPorts(i).a.bits.size.poke(0.U)
+        dut.io.inPorts(i).a.bits.source.poke(0.U)
+        dut.io.inPorts(i).a.bits.address.poke(0.U)
+        dut.io.inPorts(i).a.bits.mask.poke(0.U)
+        dut.io.inPorts(i).a.bits.data.poke(0.U)
+        dut.io.inPorts(i).a.bits.corrupt.poke(0.U)
+        dut.io.inPorts(i).d.ready.poke(false.B)
       }
-      dut.clock.step()
-
-      dut.io.instructionStream.bits.semAddr.poke(2.U)
-      dut.io.instructionStream.bits.initValues(0).poke(99.U)
-      dut.io.instructionStream.bits.initValues(1).poke(77.U)
-
-      cycles = 0
-      while (!dut.io.instructionStream.ready.peek().litToBoolean) {
-        dut.clock.step(); cycles += 1
-        require(cycles < 50, "Timeout on second enqueue")
-      }
-      dut.clock.step()
       dut.io.instructionStream.valid.poke(false.B)
-
-      dut.clock.step(10)
-
-      val full1 = sendAndReceive(dut, masterIdx = 0,
-        TLReq(param = ArithmeticDataParam.AQGREQ, address = semAddr(2, 0, 0), data = 0))
-      assert(full1 == 3, s"Expected full=3 from first program, got $full1")
-
-      // Drain full to 0: three decrements
-      for (_ <- 0 until 3) {
-        sendAndReceive(dut, masterIdx = 0,
-          TLReq(param = ArithmeticDataParam.SUBU, address = semAddr(2, 0, 0), data = 1))
+      dut.io.instructionStream.bits.payload.semAddr.poke(0.U)
+      dut.io.instructionStream.bits.payload.initValues(0).poke(0.U)
+      dut.io.instructionStream.bits.payload.initValues(1).poke(0.U)
+      dut.io.instructionStream.bits.payload.generation.poke(0.U)
+      dut.io.instructionStream.bits.row.depCount.poke(0.U)
+      for (i <- 0 until eaac.shared.InstructionSet.MaxSemDeps) {
+        dut.io.instructionStream.bits.row.depAddrs(i).poke(0.U)
       }
 
-      // Now both regs are 0/0 — the stalled reprogram should go through
-      dut.clock.step(10)
+      def enqueueProg(semIdx: Int, gen: Int, full: Int, empty: Int, deps: Seq[Int]): Unit = {
+        dut.io.instructionStream.valid.poke(true.B)
+        dut.io.instructionStream.bits.payload.semAddr.poke(semIdx.U)
+        dut.io.instructionStream.bits.payload.initValues(0).poke(full.U)
+        dut.io.instructionStream.bits.payload.initValues(1).poke(empty.U)
+        dut.io.instructionStream.bits.payload.generation.poke(gen.U)
+        dut.io.instructionStream.bits.row.depCount.poke(deps.length.U)
+        for (i <- 0 until eaac.shared.InstructionSet.MaxSemDeps) {
+          val d = if (i < deps.length) deps(i) else 0
+          dut.io.instructionStream.bits.row.depAddrs(i).poke(d.U)
+        }
+        var cycles = 0
+        while (!dut.io.instructionStream.ready.peek().litToBoolean) {
+          dut.clock.step(); cycles += 1
+          require(cycles < 50, "enqueue timeout")
+        }
+        dut.clock.step()
+        dut.io.instructionStream.valid.poke(false.B)
+      }
 
-      // Verify the second programming took effect
-      val full2 = sendAndReceive(dut, masterIdx = 0,
-        TLReq(param = ArithmeticDataParam.AQGREQ, address = semAddr(2, 0, 0), data = 0))
-      assert(full2 == 99, s"Expected full=99 after reprogram, got $full2")
+      enqueueProg(semIdxTarget, gen0, full = 0, empty = 1, deps = Seq.empty)
+      enqueueProg(semIdxTarget, gen1, full = 0, empty = 99, deps = Seq(depAddr))
 
-      val empty2 = sendAndReceive(dut, masterIdx = 0,
-        TLReq(param = ArithmeticDataParam.AQGREQ, address = semAddr(2, 0, 1), data = 0))
-      assert(empty2 == 77, s"Expected empty=77 after reprogram, got $empty2")
+      dut.clock.step(20)
+
+      val empty0 = sendAndReceive(dut, masterIdx = 0,
+        TLReq(param = ArithmeticDataParam.AQGREQ, address = tlAddr(semIdxTarget, 0, 1, gen0), data = 0))
+      assert(empty0 == 1, s"Expected gen0 empty=1 from first program, got $empty0")
+
+      val ops = Seq(
+        TLReq(param = ArithmeticDataParam.AQGREQ, address = tlAddr(semIdxTarget, 0, 1, gen0), data = 1),
+        TLReq(param = ArithmeticDataParam.SUBU,   address = tlAddr(semIdxTarget, 0, 1, gen0), data = 1),
+        TLReq(param = ArithmeticDataParam.ADDU,   address = tlAddr(semIdxTarget, 0, 0, gen0), data = 1),
+        TLReq(param = ArithmeticDataParam.AQGREQ, address = tlAddr(semIdxTarget, 1, 0, gen0), data = 1),
+        TLReq(param = ArithmeticDataParam.SUBU,   address = tlAddr(semIdxTarget, 1, 0, gen0), data = 1),
+        TLReq(param = ArithmeticDataParam.ADDU,   address = tlAddr(semIdxTarget, 1, 1, gen0), data = 1),
+      )
+      ops.foreach(op => sendAndReceive(dut, masterIdx = 0, op))
+
+      dut.clock.step(20)
+
+      val empty1 = sendAndReceive(dut, masterIdx = 0,
+        TLReq(param = ArithmeticDataParam.AQGREQ, address = tlAddr(semIdxTarget, 0, 1, gen1), data = 0))
+      assert(empty1 == 99, s"Expected gen1 empty=99 after chain unlocked second program, got $empty1")
     }
   }
 
@@ -209,9 +240,9 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       for ((semIdx, fullVal, emptyVal) <- programs) {
         dut.io.instructionStream.valid.poke(true.B)
-        dut.io.instructionStream.bits.semAddr.poke(semIdx.U)
-        dut.io.instructionStream.bits.initValues(0).poke(fullVal.U)
-        dut.io.instructionStream.bits.initValues(1).poke(emptyVal.U)
+        dut.io.instructionStream.bits.payload.semAddr.poke(semIdx.U)
+        dut.io.instructionStream.bits.payload.initValues(0).poke(fullVal.U)
+        dut.io.instructionStream.bits.payload.initValues(1).poke(emptyVal.U)
 
         var cycles = 0
         while (!dut.io.instructionStream.ready.peek().litToBoolean) {
@@ -242,9 +273,9 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       // Program semaphore 1: full=3, empty=0
       dut.io.instructionStream.valid.poke(true.B)
-      dut.io.instructionStream.bits.semAddr.poke(1.U)
-      dut.io.instructionStream.bits.initValues(0).poke(3.U)
-      dut.io.instructionStream.bits.initValues(1).poke(0.U)
+      dut.io.instructionStream.bits.payload.semAddr.poke(1.U)
+      dut.io.instructionStream.bits.payload.initValues(0).poke(3.U)
+      dut.io.instructionStream.bits.payload.initValues(1).poke(0.U)
 
       var cycles = 0
       while (!dut.io.instructionStream.ready.peek().litToBoolean) {

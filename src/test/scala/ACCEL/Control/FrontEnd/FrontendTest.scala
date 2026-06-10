@@ -219,9 +219,9 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
       waitFor(dut.clock)(dut.io.semProgStream.valid.peek().litToBoolean, "semProgStream.valid")
 
       dut.io.semProgStream.bits.opcode.expect(5.U)
-      dut.io.semProgStream.bits.semAddr.expect(3.U)
-      dut.io.semProgStream.bits.initValues(0).expect(10.U)
-      dut.io.semProgStream.bits.initValues(1).expect(20.U)
+      dut.io.semProgStream.bits.payload.semAddr.expect(3.U)
+      dut.io.semProgStream.bits.payload.initValues(0).expect(10.U)
+      dut.io.semProgStream.bits.payload.initValues(1).expect(20.U)
 
       dut.io.exeStream.valid.expect(false.B)
       dut.io.loadStream.valid.expect(false.B)
@@ -285,9 +285,9 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
       // 5. SemProg
       dut.io.semProgStream.ready.poke(true.B)
       waitFor(dut.clock)(dut.io.semProgStream.valid.peek().litToBoolean, "semProgStream.valid")
-      dut.io.semProgStream.bits.semAddr.expect(1.U)
-      dut.io.semProgStream.bits.initValues(0).expect(5.U)
-      dut.io.semProgStream.bits.initValues(1).expect(15.U)
+      dut.io.semProgStream.bits.payload.semAddr.expect(1.U)
+      dut.io.semProgStream.bits.payload.initValues(0).expect(5.U)
+      dut.io.semProgStream.bits.payload.initValues(1).expect(15.U)
       dut.clock.step()
       dut.io.semProgStream.ready.poke(false.B)
     }

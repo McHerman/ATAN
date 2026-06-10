@@ -98,16 +98,31 @@ class DMAInst(implicit c: Configuration) extends InstBaseExtended(1, 1) with Dec
   }
 }
 
-class SemProgInst(implicit c: Configuration) extends InstBase with Decodable {
+class SemProgRow extends Bundle {
+  val depCount = UInt(log2Ceil(InstructionSet.MaxSemDeps + 1).W)
+  val depAddrs = Vec(InstructionSet.MaxSemDeps, UInt(InstructionSet.SemDepAddrBits.W))
+}
+
+class SemProgPayload extends Bundle {
   val semAddr    = UInt(8.W)
   val initValues = Vec(2, UInt(16.W))
-  // Fixed encoding width; SemaphoreBank truncates to c.semaphoreGenerationWidth.
   val generation = UInt(InstructionSet.SemGenerationBits.W)
+}
+
+class SemProgInst(implicit c: Configuration) extends InstBase with Decodable {
+  val row     = new SemProgRow
+  val payload = new SemProgPayload
 
   private val fieldMap: Map[String, Data] = Map(
-    "length" -> length, "opcode" -> opcode, "semAddr" -> semAddr,
-    "initValues0" -> initValues(0), "initValues1" -> initValues(1),
-    "generation" -> generation,
+    "length" -> length, "opcode" -> opcode,
+    "semAddr"     -> payload.semAddr,
+    "initValues0" -> payload.initValues(0),
+    "initValues1" -> payload.initValues(1),
+    "generation"  -> payload.generation,
+    "depCount"    -> row.depCount,
+    "dep0"        -> row.depAddrs(0),
+    "dep1"        -> row.depAddrs(1),
+    "dep2"        -> row.depAddrs(2),
   )
 
   def layout = InstructionSet.SemProg.fields.map { f =>

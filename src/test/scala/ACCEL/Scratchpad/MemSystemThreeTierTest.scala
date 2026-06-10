@@ -645,17 +645,17 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       dut.io.semInstructionStream.ready.expect(true.B)
       dut.io.semInstructionStream.valid.poke(true.B)
-      dut.io.semInstructionStream.bits.semAddr.poke(0.U)
-      dut.io.semInstructionStream.bits.initValues(0).poke(0.U)
-      dut.io.semInstructionStream.bits.initValues(1).poke(N.U)
+      dut.io.semInstructionStream.bits.payload.semAddr.poke(0.U)
+      dut.io.semInstructionStream.bits.payload.initValues(0).poke(0.U)
+      dut.io.semInstructionStream.bits.payload.initValues(1).poke(N.U)
 
       dut.clock.step()
 
       dut.io.semInstructionStream.ready.expect(true.B)
       dut.io.semInstructionStream.valid.poke(true.B)
-      dut.io.semInstructionStream.bits.semAddr.poke(0.U)
-      dut.io.semInstructionStream.bits.initValues(0).poke(0.U)
-      dut.io.semInstructionStream.bits.initValues(1).poke(N.U)
+      dut.io.semInstructionStream.bits.payload.semAddr.poke(0.U)
+      dut.io.semInstructionStream.bits.payload.initValues(0).poke(0.U)
+      dut.io.semInstructionStream.bits.payload.initValues(1).poke(N.U)
 
       dut.clock.step()
 
@@ -887,17 +887,17 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       dut.io.semInstructionStream.ready.expect(true.B)
       dut.io.semInstructionStream.valid.poke(true.B)
-      dut.io.semInstructionStream.bits.semAddr.poke(0.U)
-      dut.io.semInstructionStream.bits.initValues(0).poke(0.U)
-      dut.io.semInstructionStream.bits.initValues(1).poke(N.U)
+      dut.io.semInstructionStream.bits.payload.semAddr.poke(0.U)
+      dut.io.semInstructionStream.bits.payload.initValues(0).poke(0.U)
+      dut.io.semInstructionStream.bits.payload.initValues(1).poke(N.U)
 
       dut.clock.step()
 
       dut.io.semInstructionStream.ready.expect(true.B)
       dut.io.semInstructionStream.valid.poke(true.B)
-      dut.io.semInstructionStream.bits.semAddr.poke(1.U)
-      dut.io.semInstructionStream.bits.initValues(0).poke(0.U)
-      dut.io.semInstructionStream.bits.initValues(1).poke(N.U)
+      dut.io.semInstructionStream.bits.payload.semAddr.poke(1.U)
+      dut.io.semInstructionStream.bits.payload.initValues(0).poke(0.U)
+      dut.io.semInstructionStream.bits.payload.initValues(1).poke(N.U)
 
       dut.clock.step()
 

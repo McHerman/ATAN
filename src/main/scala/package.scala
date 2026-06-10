@@ -62,6 +62,28 @@ package object ATA8 {
     generationWidth: Int = 0,
   )
 
+  /** Trigger-system (predicate-table dispatcher) parameters. */
+  case class TriggerParams(
+    // Number of resident rows in the trigger table (parallel-evaluated each
+    // cycle, stored as flip-flops).
+    rows:         Int = 16,
+    // Max dependency entries in a single row's guard list.
+    maxGuards:    Int = 6,
+    // Max acquire entries (sem `done` bits flipped on completion) per op.
+    maxAcquires:  Int = 4,
+    // Depth of the op memory (SRAM-backed payload store, indexed by row.opId).
+    opMemDepth:   Int = 128,
+    // Width of the op-type tag in the payload.
+    opTypeWidth:  Int = 4,
+    // Raw-operand width carried opaquely to the action units.
+    operandsBits: Int = 32,
+  ) {
+    require(rows > 0,        "trigger.rows must be positive")
+    require(maxGuards > 0,   "trigger.maxGuards must be positive")
+    require(maxAcquires > 0, "trigger.maxAcquires must be positive")
+    require(opMemDepth > 0,  "trigger.opMemDepth must be positive")
+  }
+
   case class Configuration(
     bus:       BusParams       = BusParams(),
     data:      DatapathParams  = DatapathParams(),
@@ -69,6 +91,7 @@ package object ATA8 {
     memory:    MemoryParams    = MemoryParams(),
     control:   ControlParams   = ControlParams(),
     semaphore: SemaphoreParams = SemaphoreParams(),
+    trigger:   TriggerParams   = TriggerParams(),
   ) extends MemBusConfig {
 
     // ── Flat accessors (delegate into the grouped params) ────────────────
@@ -86,6 +109,14 @@ package object ATA8 {
     def nSemaphores             = semaphore.nSemaphores
     def semaphoreQueueSize      = semaphore.queueSize
     override def semaphoreGenerationWidth = semaphore.generationWidth
+    def triggerRows             = trigger.rows
+    def triggerMaxGuards        = trigger.maxGuards
+    def triggerMaxAcquires      = trigger.maxAcquires
+    def triggerOpMemDepth       = trigger.opMemDepth
+    def triggerOpTypeWidth      = trigger.opTypeWidth
+    def triggerOperandsBits     = trigger.operandsBits
+    def fusedSemStateSize       = nSemaphores * (1 << semaphoreGenerationWidth)
+    def fusedSemAddrWidth       = log2Ceil(fusedSemStateSize max 2)
     def addrWidth           = bus.addrWidth
     def dataBusSize         = bus.dataBusSize
     def sourceWidth         = bus.sourceWidth
@@ -97,6 +128,7 @@ package object ATA8 {
     def withMemory(f: MemoryParams => MemoryParams):         Configuration = copy(memory    = f(memory))
     def withControl(f: ControlParams => ControlParams):      Configuration = copy(control   = f(control))
     def withSemaphore(f: SemaphoreParams => SemaphoreParams): Configuration = copy(semaphore = f(semaphore))
+    def withTrigger(f: TriggerParams => TriggerParams):       Configuration = copy(trigger   = f(trigger))
 
     // ── Derived widths / sanity checks ───────────────────────────────────
     val tagWidth       = log2Ceil(tagCount)
