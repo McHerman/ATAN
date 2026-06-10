@@ -13,12 +13,13 @@ class SemaphoreBank(noPorts: Int)(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
     val inPorts = Vec(noPorts, Flipped(new TilelinkPort))
     val progPort = Flipped(Decoupled(new SemaphoreProgPort))
+    val eventPort = Decoupled(new SemaphoreEvent)
   })
 
   val noSemaphores = c.nSemaphores
   val genWidth     = c.semaphoreGenerationWidth
 
-  val semaphores = VecInit(Seq.fill(noSemaphores)(Module(new Semaphore()).io))
+  val semaphores = VecInit(Seq.tabulate(noSemaphores)(i => Module(new Semaphore(i)).io))
 
   semaphores.zipWithIndex.foreach { case (sem, i) =>
     sem.progPort.valid             := io.progPort.valid && (io.progPort.bits.addr === i.U)
@@ -27,6 +28,10 @@ class SemaphoreBank(noPorts: Int)(implicit c: Configuration) extends Module {
   }
 
   io.progPort.ready := semaphores(io.progPort.bits.addr).progPort.ready
+
+  val eventArb = Module(new SemaphoreEventArbiter(noSemaphores))
+  eventArb.io.in.zip(semaphores).foreach { case (arbIn, sem) => arbIn <> sem.eventPort }
+  io.eventPort <> eventArb.io.out
 
 
   // Address LSBs: [gen | regSel | portSel | semIdx]. xbar treats gen + regSel as routing don't-care.

@@ -8,13 +8,24 @@ class SemaphoreProg(val genWidth: Int) extends Bundle {
   val generation = UInt(genWidth.W)
 }
 
-class Semaphore()(implicit c: Configuration) extends Module {
+object SemaphoreEventCodes {
+  val Complete = 0.U(3.W)
+}
+
+
+class SemaphoreEvent()(implicit c: Configuration) extends Bundle {
+  val addr = UInt(c.addrWidth.W) 
+  val eventCode = UInt(3.W)
+}
+
+class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
   val genWidth     = c.semaphoreGenerationWidth
   val regSelectBit = genWidth // address bit that selects full/empty register
 
   val io = IO(new Bundle {
     val inPorts  = Vec(2, Flipped(new TilelinkPort))
     val progPort = Flipped(Decoupled(new SemaphoreProg(genWidth)))
+    val eventPort = Decoupled(new SemaphoreEvent)
   })
 
   io.inPorts.foreach { port =>
@@ -29,13 +40,43 @@ class Semaphore()(implicit c: Configuration) extends Module {
   // Installed at (re)programming; mismatch with address LSBs is denied.
   val generation = RegInit(0.U(genWidth.W))
 
-  io.progPort.ready := regs(0) === 0.U && regs(1) === 0.U // We only accept reprogramming when semaphore execution has finished
+  val initFull        = RegInit(0.U(16.W))
+  val initEmpty       = RegInit(0.U(16.W))
+  val touched         = RegInit(false.B)
+  val completePending = RegInit(false.B)
+
+  //io.progPort.ready := regs(0) === 0.U && regs(1) === 0.U // We only accept reprogramming when semaphore execution has finished
+
+  io.progPort.ready := true.B 
 
   // Should prevent hazards in asynchronous execution
   when(io.progPort.fire){
-    regs(0)    := io.progPort.bits.initValues(0)
-    regs(1)    := io.progPort.bits.initValues(1)
-    generation := io.progPort.bits.generation
+    regs(0)         := io.progPort.bits.initValues(0)
+    regs(1)         := io.progPort.bits.initValues(1)
+    generation      := io.progPort.bits.generation
+    initFull        := io.progPort.bits.initValues(0)
+    initEmpty       := io.progPort.bits.initValues(1)
+    touched         := false.B
+    completePending := false.B
+  }
+
+  val atInit = regs(0) === initFull && regs(1) === initEmpty
+  when(!atInit) { touched := true.B }
+  when(touched && atInit && !completePending && !io.progPort.fire) {
+    completePending := true.B
+  }
+
+  val fusedAddr =
+    if (genWidth == 0) (semIdx).U(c.addrWidth.W)
+    else Cat(semIdx.U((c.addrWidth - genWidth).W), generation)
+
+  io.eventPort.valid          := completePending
+  io.eventPort.bits.addr      := fusedAddr
+  io.eventPort.bits.eventCode := SemaphoreEventCodes.Complete
+
+  when(io.eventPort.fire) {
+    completePending := false.B
+    touched         := false.B
   }
 
 
