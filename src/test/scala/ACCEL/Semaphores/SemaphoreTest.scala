@@ -142,17 +142,17 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "Producer/consumer: bounded buffer of 4, 16 transfers of 1 unit each" in {
     implicit val c = Configuration.default()
-    simulate(new Semaphore()) { dut => producerConsumerRun(dut, bufferSize = 4,  transfers = 16) }
+    simulate(new Semaphore(0)) { dut => producerConsumerRun(dut, bufferSize = 4,  transfers = 16) }
   }
 
   "Producer/consumer: unbounded buffer of 16, 16 transfers of 1 unit each" in {
     implicit val c = Configuration.default()
-    simulate(new Semaphore()) { dut => producerConsumerRun(dut, bufferSize = 16, transfers = 16) }
+    simulate(new Semaphore(0)) { dut => producerConsumerRun(dut, bufferSize = 16, transfers = 16) }
   }
 
   "AQGREQ on even address should return fullReg" in {
     implicit val c = Configuration.default()
-    simulate(new Semaphore()) { dut =>
+    simulate(new Semaphore(0)) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
       dut.io.progPort.bits.initValues(0).poke(42.U)
@@ -190,7 +190,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "AQGREQ on odd address should return emptyReg" in {
     implicit val c = Configuration.default()
-    simulate(new Semaphore()) { dut =>
+    simulate(new Semaphore(0)) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
       dut.io.progPort.bits.initValues(0).poke(42.U)
@@ -230,7 +230,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "SUBU should decrement emptyReg and return the new value" in {
     implicit val c = Configuration.default()
-    simulate(new Semaphore()) { dut =>
+    simulate(new Semaphore(0)) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
       dut.io.progPort.bits.initValues(0).poke(20.U)
@@ -303,7 +303,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "Port should return to idle after a transaction and accept new requests" in {
     implicit val c = Configuration.default()
-    simulate(new Semaphore()) { dut =>
+    simulate(new Semaphore(0)) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
       dut.io.progPort.bits.initValues(0).poke(5.U)
@@ -371,7 +371,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "Both ports should operate concurrently and independently" in {
     implicit val c = Configuration.default()
-    simulate(new Semaphore()) { dut =>
+    simulate(new Semaphore(0)) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
       dut.io.progPort.bits.initValues(0).poke(50.U)
@@ -418,7 +418,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "Simultaneous SUBU on the same register: both ports complete and final value is correct" in {
     implicit val c = Configuration.default()
-    simulate(new Semaphore()) { dut =>
+    simulate(new Semaphore(0)) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
       dut.io.progPort.bits.initValues(0).poke(0.U)
@@ -498,7 +498,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "Simultaneous SUBU on different registers: no contention, both ports proceed in parallel" in {
     implicit val c = Configuration.default()
-    simulate(new Semaphore()) { dut =>
+    simulate(new Semaphore(0)) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
       dut.io.progPort.bits.initValues(0).poke(50.U)  // fullReg  = 50
@@ -559,7 +559,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "Repeated same-register contention: neither port starves across multiple rounds" in {
     implicit val c = Configuration.default()
-    simulate(new Semaphore()) { dut =>
+    simulate(new Semaphore(0)) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
       dut.io.progPort.bits.initValues(0).poke(0.U)
@@ -640,7 +640,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "ADDU should increment the target register and return the new value" in {
     implicit val c = Configuration.default()
-    simulate(new Semaphore()) { dut =>
+    simulate(new Semaphore(0)) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
       dut.io.progPort.bits.initValues(0).poke(10.U)  // fullReg  = 10
@@ -692,7 +692,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "Simultaneous ADDU and SUBU on the same register: both complete and final value is correct" in {
     implicit val c = Configuration.default()
-    simulate(new Semaphore()) { dut =>
+    simulate(new Semaphore(0)) { dut =>
       defaultPokes(dut)
       dut.io.progPort.valid.poke(true.B)
       dut.io.progPort.bits.initValues(0).poke(0.U)
@@ -768,7 +768,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "progPort reprogramming should take effect on subsequent requests after completion" in {
     implicit val c = Configuration.default()
-    simulate(new Semaphore()) { dut =>
+    simulate(new Semaphore(0)) { dut =>
       defaultPokes(dut)
 
       dut.io.progPort.valid.poke(true.B)
@@ -923,7 +923,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "AQGREQ should stall until acquire is valid" in {
     implicit val c = Configuration.default()
-    simulate(new Semaphore()) { dut =>
+    simulate(new Semaphore(0)) { dut =>
       defaultPokes(dut)
 
       dut.io.progPort.valid.poke(true.B)
@@ -1026,7 +1026,72 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       dut.io.inPorts(1).d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
       dut.io.inPorts(1).d.bits.data.expect(0.U)
-      
+
+    }
+  }
+
+  def runTx(dut: Semaphore, portIdx: Int, param: UInt, addr: Int, data: Int): Unit = {
+    val port = dut.io.inPorts(portIdx)
+    var cycles = 0
+    while (!port.a.ready.peek().litToBoolean) {
+      dut.clock.step(); cycles += 1
+      require(cycles < 200, s"Timeout waiting for a.ready on port $portIdx")
+    }
+    port.a.valid.poke(true.B)
+    port.a.bits.opcode.poke(TilelinkOpcodes.ArithmeticData)
+    port.a.bits.param.poke(param)
+    port.a.bits.address.poke(addr.U)
+    port.a.bits.data.poke(data.U)
+    port.a.bits.source.poke(portIdx.U)
+    port.a.bits.size.poke(0.U)
+    port.a.bits.mask.poke(0.U)
+    port.a.bits.corrupt.poke(0.U)
+    dut.clock.step()
+    port.a.valid.poke(false.B)
+
+    port.d.ready.poke(true.B)
+    cycles = 0
+    while (!port.d.valid.peek().litToBoolean) {
+      dut.clock.step(); cycles += 1
+      require(cycles < 200, s"Timeout waiting for d.valid on port $portIdx")
+    }
+    dut.clock.step()
+    port.d.ready.poke(false.B)
+  }
+
+  "Semaphore emits Complete event after a full producer/consumer cycle" in {
+    implicit val c = Configuration.default()
+    val semIdx = 3
+    simulate(new Semaphore(semIdx)) { dut =>
+      defaultPokes(dut)
+
+      dut.io.progPort.valid.poke(true.B)
+      dut.io.progPort.bits.initValues(0).poke(0.U)
+      dut.io.progPort.bits.initValues(1).poke(1.U)
+      dut.clock.step()
+      dut.io.progPort.valid.poke(false.B)
+
+      dut.io.eventPort.valid.expect(false.B)
+
+      runTx(dut, 0, ArithmeticDataParam.AQGREQ, 1, 1)
+      runTx(dut, 0, ArithmeticDataParam.SUBU,   1, 1)
+      runTx(dut, 0, ArithmeticDataParam.ADDU,   0, 1)
+
+      dut.io.eventPort.valid.expect(false.B)
+
+      runTx(dut, 1, ArithmeticDataParam.AQGREQ, 0, 1)
+      runTx(dut, 1, ArithmeticDataParam.SUBU,   0, 1)
+      runTx(dut, 1, ArithmeticDataParam.ADDU,   1, 1)
+
+      dut.clock.step()
+      dut.io.eventPort.valid.expect(true.B)
+      dut.io.eventPort.bits.eventCode.expect(SemaphoreEventCodes.Complete)
+      dut.io.eventPort.bits.addr.expect(semIdx.U)
+
+      dut.io.eventPort.ready.poke(true.B)
+      dut.clock.step()
+      dut.io.eventPort.ready.poke(false.B)
+      dut.io.eventPort.valid.expect(false.B)
     }
   }
 }
