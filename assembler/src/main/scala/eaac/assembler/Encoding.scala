@@ -96,15 +96,27 @@ object Encoding {
     initEmpty: Int,
     initFull: Int,
     generation: Int = 0,
-  ): Encoded = Encoded(
-    SemProg.encode(Map(
-      "semAddr"     -> BigInt(semAddr),
-      "initValues0" -> BigInt(initFull),
-      "initValues1" -> BigInt(initEmpty),
-      "generation"  -> BigInt(generation),
-    )),
-    SemProg.slots,
-  )
+    deps: Seq[Int] = Seq.empty,
+  ): Encoded = {
+    require(
+      deps.length <= InstructionSet.MaxSemDeps,
+      s"SemProg supports at most ${InstructionSet.MaxSemDeps} deps, got ${deps.length}",
+    )
+    val padded = deps.padTo(InstructionSet.MaxSemDeps, 0)
+    Encoded(
+      SemProg.encode(Map(
+        "semAddr"     -> BigInt(semAddr),
+        "initValues0" -> BigInt(initFull),
+        "initValues1" -> BigInt(initEmpty),
+        "generation"  -> BigInt(generation),
+        "depCount"    -> BigInt(deps.length),
+        "dep0"        -> BigInt(padded(0)),
+        "dep1"        -> BigInt(padded(1)),
+        "dep2"        -> BigInt(padded(2)),
+      )),
+      SemProg.slots,
+    )
+  }
 
   /** Pack a sequence of encoded instructions into a stream of 128-bit
     * beats.  Instructions are emitted in order at 64-bit-slot granularity;
