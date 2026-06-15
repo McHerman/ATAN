@@ -39,6 +39,21 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
 
   /** Result of assembling a single function. */
 
+  /** Per-semaphore-index fused address of the most recent SemAlloc seen so
+    * far. The next SemAlloc on the same physical address auto-deps on this
+    * predecessor so the trigger waits for the previous tenant's Complete
+    * event before re-programming.
+    */
+  private val semAllocPrevFused = scala.collection.mutable.Map.empty[Int, Int]
+
+  /** (semAddr, gen) → union of chain_addresses contributed by every Execute
+    * SemDep that targets this slot. Populated by `collectSemDepChainAddrs`
+    * before lowering, consumed in `lowerSemAlloc` so each SemAlloc waits for
+    * its consumers' upstream chains too.
+    */
+  private val semDepChainAddrs =
+    scala.collection.mutable.Map.empty[(Int, Int), Set[Int]]
+
   case class Preload(
     shape: Seq[Int],
     offsetAddress: BigInt,
@@ -99,7 +114,7 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
 
   private def lowerCommand(op: Operation, buffers: Seq[BufferRef], const: Seq[eaac_fb.Constant]): Lowered = op.commandType() match {
     case Command.SemAlloc   => lowerSemAlloc(op)
-    case Command.SemDealloc => lowerSemDealloc(op)
+    case Command.SemDealloc => Lowered(Seq.empty, Seq.empty)
     case Command.Execute    => lowerExecute(op, buffers)
     case Command.MemAlloc   => lowerMemoryAlloc(op, buffers, const)
     case Command.MemDealloc => Lowered(Seq.empty, Seq.empty)
@@ -128,15 +143,35 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
   }
 
   private def lowerSemAlloc(op: Operation): Lowered = {
-    val sem = op.command(new SemAlloc()).asInstanceOf[SemAlloc]
+    val sem      = op.command(new SemAlloc()).asInstanceOf[SemAlloc]
+    val fused    = sem.fusedAddress()
+    val (semIdx, gen) = decomposeFused(fused)
+
+    val prevDep      = semAllocPrevFused.get(semIdx).toSeq
+    val explicitDeps = (0 until sem.chainsLength()).map(sem.chains(_).toInt)
+    val deps         = (prevDep ++ explicitDeps).distinct
+
+    semAllocPrevFused(semIdx) = fused
+
     Lowered(Seq(Encoding.encodeSemProg(
-      semAddr    = sem.address(),
+      semAddr    = semIdx,
       initEmpty  = sem.emptyCount().toInt,
       initFull   = sem.fullCount().toInt,
-      generation = sem.generation(),
+      generation = gen,
+      deps       = deps,
     )), Seq.empty)
   }
 
+  /** Split a fused trigger-state index back into `(semIdx, generation)` for
+    * the hardware-side SemProg slots that still keep them apart.
+    */
+  private def decomposeFused(fused: Int): (Int, Int) = {
+    val gw   = config.semaphoreGenerationWidth
+    val mask = (1 << gw) - 1
+    (fused >>> gw, fused & mask)
+  }
+
+  /*
   private def lowerSemDealloc(op: Operation): Lowered = {
     val sem = op.command(new SemDealloc()).asInstanceOf[SemDealloc]
     Lowered(Seq(Encoding.encodeSemProg(
@@ -145,6 +180,7 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
       initFull  = 0,
     )), Seq.empty)
   }
+  */
 
   // ── Execute (DMA or Compute) ──────────────────────────────────────────
 
@@ -291,26 +327,25 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     }
   }
 
-  /** Pack a SemDep into the addrPkg semAddr field. Layout (LSB → MSB):
-    *   [genWidth-1 : 0]   generation tag (matched against the semaphore's
-    *                      internal register; mismatches are denied by the
-    *                      semaphore module — the xbar treats these as
-    *                      routing don't-care)
+  /** Insert the (regSel, portSel) two-bit field into a fused trigger-state
+    * index to produce the addrPkg.semAddr value the hardware expects.
+    *
+    * Layout (LSB → MSB):
+    *   [genWidth-1 : 0]   generation tag (gen bits, untouched from `fused`)
     *   [genWidth]         register select (0 = fullReg, 1 = emptyReg) —
     *                      filled by TLDMA at runtime; the assembler leaves
     *                      this bit as 0
     *   [genWidth+1]       port select within a semaphore (acquire = 0,
-    *                      require = 1) so the producer and consumer don't
-    *                      contend for the same TL slave port
-    *   [genWidth+2 : ...] semaphore index (FB sem_address)
+    *                      require = 1)
+    *   [genWidth+2 : ...] semaphore index (semIdx bits shifted up by 2)
     */
-  private def packSemAddr(semIndex: Int, generation: Int, isAcquire: Boolean): Int = {
-    val genWidth        = config.semaphoreGenerationWidth
-    val semIndexShift   = genWidth + 2
-    val portSelectShift = genWidth + 1
-    val genMask         = (1 << genWidth) - 1
-    val portBit         = if (isAcquire) 0 else 1
-    (semIndex << semIndexShift) | (portBit << portSelectShift) | (generation & genMask)
+  private def packTLSemAddr(fused: Int, isAcquire: Boolean): Int = {
+    val gw      = config.semaphoreGenerationWidth
+    val genMask = (1 << gw) - 1
+    val portBit = if (isAcquire) 0 else 1
+    val genBits = fused & genMask
+    val semIdx  = fused >>> gw
+    (semIdx << (gw + 2)) | (portBit << (gw + 1)) | genBits
   }
 
   /** Find a semaphore dependency that guards a buffer by index, searching
@@ -327,7 +362,7 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     for (i <- 0 until count) {
       val dep = getDep(i)
       if (dep.bufferId() == bufferId)
-        return Some(packSemAddr(dep.semAddress(), dep.generation(), isAcquire))
+        return Some(packTLSemAddr(dep.fusedAddress(), isAcquire))
     }
     None
   }
@@ -427,6 +462,20 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     sb.result()
   }
 
+  /** Pretty-print a fused dep address as (semIdx, gen). */
+  private def formatFusedDep(value: BigInt): String = {
+    val gw   = config.semaphoreGenerationWidth
+    val mask = (BigInt(1) << gw) - 1
+    val sem  = value >> gw
+    val gen  = value & mask
+    if (gw > 0) f"sem=$sem%d, gen=$gen%d" else f"sem=$sem%d"
+  }
+
+  private def isDepField(f: Field): Boolean =
+    f.name.matches("dep[0-9]+")
+
+  private def depIndex(f: Field): Int = f.name.substring(3).toInt
+
   private def formatInstruction(inst: BigInt): String = {
     val opcode = ((inst >> InstructionSet.OpcodeField.startBit) &
       ((BigInt(1) << InstructionSet.OpcodeField.width) - 1)).toInt
@@ -434,11 +483,18 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
       case None => f"UNKNOWN opcode=$opcode"
       case Some(layout) =>
         val name = opcodeNames.getOrElse(opcode, s"Op$opcode")
+        val depCountField = layout.fields.find(_.name == "depCount")
+        val depCount = depCountField.map(extractField(inst, _)).getOrElse(BigInt(0))
         val parts = layout.fields.flatMap {
           case f if f.name == "opcode" || f.name == "length" => None
           case f if isAddrPkgField(f) =>
             val raw = extractField(inst, f)
             Some(s"${f.name}={${formatAddrPkg(raw, f.name)}}")
+          case f if isDepField(f) =>
+            if (BigInt(depIndex(f)) < depCount)
+              Some(s"${f.name}={${formatFusedDep(extractField(inst, f))}}")
+            else
+              None
           case f =>
             Some(f"${f.name}=${extractField(inst, f)}%d")
         }
