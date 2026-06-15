@@ -19,7 +19,10 @@ class ATA8(config: Configuration) extends Module {
     //val dbgStoreState = Output(UInt(4.W))
   })
 
-  implicit lazy val mc: MemSystemConfig = MemSystemConfig.default().copy(sourceWidth = c.sourceWidth)
+  implicit lazy val mc: MemSystemConfig = MemSystemConfig.default().copy(
+    sourceWidth = c.sourceWidth,
+    semGenWidth = c.semaphoreGenerationWidth,
+  )
   private val nDMAs = mc.tiers.length - 1
   private val nExeSemPorts = 3 * c.grainDim  // writeSem(grainDim) + readSem(2 * grainDim)
   private val nSemPorts = nExeSemPorts + 1 + 1 + 2 * nDMAs  // Execute + Load + Store + DMA

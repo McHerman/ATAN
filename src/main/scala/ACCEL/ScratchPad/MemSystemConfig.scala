@@ -23,8 +23,10 @@ case class MemSystemConfig(
   dataBusSize:   Int = 8,   // bytes per TileLink beat
   arithDataWidth: Int = 8,  // bits per arithmetic element
   addrWidth:     Int = 16,  // address bits
-  sourceWidth:   Int = 1    // TileLink source-ID width
+  sourceWidth:   Int = 1,   // TileLink source-ID width
+  semGenWidth:   Int = 0,   // bank-side semaphore generation width
 ) extends MemBusConfig {
+  override def semaphoreGenerationWidth: Int = semGenWidth
   require(tiers.nonEmpty, "MemSystemConfig must have at least one tier")
 
   /** Size of each tier in words (rounded up to power of 2). */

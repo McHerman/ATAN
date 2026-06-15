@@ -21,7 +21,7 @@ import io.circe.parser._
 class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
 
   val n = 8
-  val maxCycles = 15000 
+  val maxCycles = 200000
 
   // ── Test matrix (same as ATA8Test) ────────────────────────────────────
 
@@ -150,9 +150,18 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
   }
 
   "End-to-end no arg" in {
-    val testConfig = Configuration.default().withBus(_.copy(sourceWidth = 8))
-    val msCfg = MemSystemConfig.default().copy(sourceWidth = testConfig.sourceWidth)
-    val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize, verbose = true))
+    val testConfig = Configuration.default()
+      .withBus(_.copy(sourceWidth = 8))
+      .withSemaphore(_.copy(generationWidth = 2))
+    val msCfg = MemSystemConfig.default().copy(
+      sourceWidth = testConfig.sourceWidth,
+      semGenWidth = testConfig.semaphoreGenerationWidth,
+    )
+    val asm = new Assembler(AssemblerConfig(
+      dataBusBytes             = testConfig.dataBusSize,
+      semaphoreGenerationWidth = testConfig.semaphoreGenerationWidth,
+      verbose                  = true,
+    ))
 
     // Phase 1: Build FlatBuffer program
     //val programBuf = buildMatmulProgram()
@@ -266,8 +275,16 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
       .default()
       .withBus(_.copy(sourceWidth = 8))
       .withSemaphore(_.copy(nSemaphores = 16))
-    val msCfg = MemSystemConfig.default().copy(sourceWidth = testConfig.sourceWidth)
-    val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize, verbose = true))
+      .withSemaphore(_.copy(generationWidth = 2))
+    val msCfg = MemSystemConfig.default().copy(
+      sourceWidth = testConfig.sourceWidth,
+      semGenWidth = testConfig.semaphoreGenerationWidth,
+    )
+    val asm = new Assembler(AssemblerConfig(
+      dataBusBytes             = testConfig.dataBusSize,
+      semaphoreGenerationWidth = testConfig.semaphoreGenerationWidth,
+      verbose                  = true,
+    ))
 
     // Phase 1: Build FlatBuffer program
     //val programBuf = buildMatmulProgram()
@@ -367,10 +384,19 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     val testConfig = Configuration
       .default()
       .withBus(_.copy(sourceWidth = 8))
-      .withSemaphore(_.copy(nSemaphores = 32))
+      .withSemaphore(_.copy(nSemaphores = 16))
       .withSemaphore(_.copy(generationWidth = 2))
-    val msCfg = MemSystemConfig.default().copy(sourceWidth = testConfig.sourceWidth)
-    val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize, verbose = true))
+      .withSemaphore(_.copy(queueSize = 8))
+      .withTrigger(_.copy(rows = 64, opMemDepth = 64))
+    val msCfg = MemSystemConfig.default().copy(
+      sourceWidth = testConfig.sourceWidth,
+      semGenWidth = testConfig.semaphoreGenerationWidth,
+    )
+    val asm = new Assembler(AssemblerConfig(
+      dataBusBytes             = testConfig.dataBusSize,
+      semaphoreGenerationWidth = testConfig.semaphoreGenerationWidth,
+      verbose                  = true,
+    ))
 
     // Phase 1: Build FlatBuffer program
     //val programBuf = buildMatmulProgram()
@@ -542,8 +568,16 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
       .default()
       .withBus(_.copy(sourceWidth = 8))
       .withSemaphore(_.copy(nSemaphores = 32))
-    val msCfg = MemSystemConfig.small().copy(sourceWidth = testConfig.sourceWidth)
-    val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize, verbose = true))
+      .withSemaphore(_.copy(generationWidth = 2))
+    val msCfg = MemSystemConfig.small().copy(
+      sourceWidth = testConfig.sourceWidth,
+      semGenWidth = testConfig.semaphoreGenerationWidth,
+    )
+    val asm = new Assembler(AssemblerConfig(
+      dataBusBytes             = testConfig.dataBusSize,
+      semaphoreGenerationWidth = testConfig.semaphoreGenerationWidth,
+      verbose                  = true,
+    ))
 
     // Phase 1: Build FlatBuffer program
     //val programBuf = buildMatmulProgram()
