@@ -4,7 +4,8 @@ import chisel3._
 import chisel3.util._
 
 class SemaphoreProgPort()(implicit c: Configuration) extends Bundle {
-  val initValues = Vec(2, UInt(16.W))
+  val initFull   = UInt(16.W)
+  val initEmpty  = UInt(16.W)
   val addr       = UInt(16.W)
   val generation = UInt(c.semaphoreGenerationWidth.W)
 }
@@ -23,7 +24,8 @@ class SemaphoreBank(noPorts: Int)(implicit c: Configuration) extends Module {
 
   semaphores.zipWithIndex.foreach { case (sem, i) =>
     sem.progPort.valid             := io.progPort.valid && (io.progPort.bits.addr === i.U)
-    sem.progPort.bits.initValues   := io.progPort.bits.initValues
+    sem.progPort.bits.initFull     := io.progPort.bits.initFull
+    sem.progPort.bits.initEmpty    := io.progPort.bits.initEmpty
     sem.progPort.bits.generation   := io.progPort.bits.generation
   }
 

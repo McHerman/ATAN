@@ -33,16 +33,16 @@ class SemaphoreBankTest extends AnyFreeSpec with Matchers with ChiselSim {
     }
     dut.io.progPort.valid.poke(false.B)
     dut.io.progPort.bits.addr.poke(0.U)
-    dut.io.progPort.bits.initValues(0).poke(0.U)
-    dut.io.progPort.bits.initValues(1).poke(0.U)
+    dut.io.progPort.bits.initFull.poke(0.U)
+    dut.io.progPort.bits.initEmpty.poke(0.U)
   }
 
   // progPort.addr == semIdx directly
   def programSemaphore(dut: SemaphoreBank, semIdx: Int, full: Int, empty: Int): Unit = {
     dut.io.progPort.valid.poke(true.B)
     dut.io.progPort.bits.addr.poke(semIdx.U)
-    dut.io.progPort.bits.initValues(0).poke(full.U)
-    dut.io.progPort.bits.initValues(1).poke(empty.U)
+    dut.io.progPort.bits.initFull.poke(full.U)
+    dut.io.progPort.bits.initEmpty.poke(empty.U)
     dut.clock.step()
     dut.io.progPort.valid.poke(false.B)
   }

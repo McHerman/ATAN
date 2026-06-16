@@ -104,12 +104,12 @@ class ATA8Test extends AnyFreeSpec with Matchers with ChiselSim {
     inst
   }
 
-  /** SemProgInst: opcode[5:0]=5, semAddr[13:6], initValues[45:14] */
+  /** SemProgInst: opcode[5:0]=5, semAddr[13:6], initFull[29:14], initEmpty[45:30] */
   def assembleSemProg(semAddr: Int, full: Int, empty: Int): BigInt = {
     var inst = BigInt(5)                                    // opcode = 5
     inst |= BigInt(semAddr & 0xFF) << 6                     // semAddr
-    inst |= BigInt(full & 0xFFFF) << 14                     // initValues(0) = fullReg
-    inst |= BigInt(empty & 0xFFFF) << 30                    // initValues(1) = emptyReg
+    inst |= BigInt(full & 0xFFFF) << 14                     // initFull
+    inst |= BigInt(empty & 0xFFFF) << 30                    // initEmpty
     inst
   }
 

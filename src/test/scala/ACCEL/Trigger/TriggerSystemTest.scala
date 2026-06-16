@@ -28,8 +28,8 @@ class TriggerSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
     dut.io.load.bits.opcode.poke(5.U)
     dut.io.load.bits.payload.semAddr.poke(semAddr.U)
     dut.io.load.bits.payload.generation.poke(gen.U)
-    dut.io.load.bits.payload.initValues(0).poke(full.U)
-    dut.io.load.bits.payload.initValues(1).poke(empty.U)
+    dut.io.load.bits.payload.initFull.poke(full.U)
+    dut.io.load.bits.payload.initEmpty.poke(empty.U)
     dut.io.load.bits.row.depCount.poke(guards.length.U)
     for (i <- 0 until eaac.shared.InstructionSet.MaxSemDeps) {
       val g = if (i < guards.length) guards(i) else 0

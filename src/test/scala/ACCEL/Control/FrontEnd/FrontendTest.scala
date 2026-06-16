@@ -60,7 +60,7 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
     )
 
   def assembleSemProg(semAddr: Int, init0: Int, init1: Int): Encoded =
-    // encodeSemProg parameter naming: init0 here = initValues(0) = fullReg
+    // encodeSemProg parameter naming: init0 here = initFull, init1 = initEmpty
     Encoding.encodeSemProg(semAddr = semAddr, initEmpty = init1, initFull = init0)
 
   // ── AXI-S streaming ───────────────────────────────────────────────────────
@@ -220,8 +220,8 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       dut.io.semProgStream.bits.opcode.expect(5.U)
       dut.io.semProgStream.bits.payload.semAddr.expect(3.U)
-      dut.io.semProgStream.bits.payload.initValues(0).expect(10.U)
-      dut.io.semProgStream.bits.payload.initValues(1).expect(20.U)
+      dut.io.semProgStream.bits.payload.initFull.expect(10.U)
+      dut.io.semProgStream.bits.payload.initEmpty.expect(20.U)
 
       dut.io.exeStream.valid.expect(false.B)
       dut.io.loadStream.valid.expect(false.B)
@@ -286,8 +286,8 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.semProgStream.ready.poke(true.B)
       waitFor(dut.clock)(dut.io.semProgStream.valid.peek().litToBoolean, "semProgStream.valid")
       dut.io.semProgStream.bits.payload.semAddr.expect(1.U)
-      dut.io.semProgStream.bits.payload.initValues(0).expect(5.U)
-      dut.io.semProgStream.bits.payload.initValues(1).expect(15.U)
+      dut.io.semProgStream.bits.payload.initFull.expect(5.U)
+      dut.io.semProgStream.bits.payload.initEmpty.expect(15.U)
       dut.clock.step()
       dut.io.semProgStream.ready.poke(false.B)
     }

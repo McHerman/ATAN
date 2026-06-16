@@ -27,7 +27,8 @@ class SemSystem(noPorts: Int)(implicit c: Configuration) extends Module {
 
   bank.io.progPort.valid           := trigger.io.fire.valid
   bank.io.progPort.bits.addr       := trigger.io.fire.bits.payload.semAddr
-  bank.io.progPort.bits.initValues := trigger.io.fire.bits.payload.initValues
+  bank.io.progPort.bits.initFull   := trigger.io.fire.bits.payload.initFull
+  bank.io.progPort.bits.initEmpty  := trigger.io.fire.bits.payload.initEmpty
   bank.io.progPort.bits.generation := truncGeneration(trigger.io.fire.bits.payload.generation)
   trigger.io.fire.ready := bank.io.progPort.ready
 

@@ -31,8 +31,8 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
     dut.io.instructionStream.valid.poke(false.B)
     dut.io.instructionStream.bits.opcode.poke(0.U)
     dut.io.instructionStream.bits.payload.semAddr.poke(0.U)
-    dut.io.instructionStream.bits.payload.initValues(0).poke(0.U)
-    dut.io.instructionStream.bits.payload.initValues(1).poke(0.U)
+    dut.io.instructionStream.bits.payload.initFull.poke(0.U)
+    dut.io.instructionStream.bits.payload.initEmpty.poke(0.U)
   }
 
   def sendAndReceive(dut: SemSystem, masterIdx: Int, req: TLReq): BigInt = {
@@ -77,8 +77,8 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
       // Enqueue: program semaphore 0 with full=20, empty=5
       dut.io.instructionStream.valid.poke(true.B)
       dut.io.instructionStream.bits.payload.semAddr.poke(0.U)
-      dut.io.instructionStream.bits.payload.initValues(0).poke(20.U)
-      dut.io.instructionStream.bits.payload.initValues(1).poke(5.U)
+      dut.io.instructionStream.bits.payload.initFull.poke(20.U)
+      dut.io.instructionStream.bits.payload.initEmpty.poke(5.U)
 
       var cycles = 0
       while (!dut.io.instructionStream.ready.peek().litToBoolean) {
@@ -116,8 +116,8 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
       for ((semIdx, fullVal, emptyVal) <- programs) {
         dut.io.instructionStream.valid.poke(true.B)
         dut.io.instructionStream.bits.payload.semAddr.poke(semIdx.U)
-        dut.io.instructionStream.bits.payload.initValues(0).poke(fullVal.U)
-        dut.io.instructionStream.bits.payload.initValues(1).poke(emptyVal.U)
+        dut.io.instructionStream.bits.payload.initFull.poke(fullVal.U)
+        dut.io.instructionStream.bits.payload.initEmpty.poke(emptyVal.U)
 
         var cycles = 0
         while (!dut.io.instructionStream.ready.peek().litToBoolean) {
@@ -172,8 +172,8 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
       }
       dut.io.instructionStream.valid.poke(false.B)
       dut.io.instructionStream.bits.payload.semAddr.poke(0.U)
-      dut.io.instructionStream.bits.payload.initValues(0).poke(0.U)
-      dut.io.instructionStream.bits.payload.initValues(1).poke(0.U)
+      dut.io.instructionStream.bits.payload.initFull.poke(0.U)
+      dut.io.instructionStream.bits.payload.initEmpty.poke(0.U)
       dut.io.instructionStream.bits.payload.generation.poke(0.U)
       dut.io.instructionStream.bits.row.depCount.poke(0.U)
       for (i <- 0 until eaac.shared.InstructionSet.MaxSemDeps) {
@@ -183,8 +183,8 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
       def enqueueProg(semIdx: Int, gen: Int, full: Int, empty: Int, deps: Seq[Int]): Unit = {
         dut.io.instructionStream.valid.poke(true.B)
         dut.io.instructionStream.bits.payload.semAddr.poke(semIdx.U)
-        dut.io.instructionStream.bits.payload.initValues(0).poke(full.U)
-        dut.io.instructionStream.bits.payload.initValues(1).poke(empty.U)
+        dut.io.instructionStream.bits.payload.initFull.poke(full.U)
+        dut.io.instructionStream.bits.payload.initEmpty.poke(empty.U)
         dut.io.instructionStream.bits.payload.generation.poke(gen.U)
         dut.io.instructionStream.bits.row.depCount.poke(deps.length.U)
         for (i <- 0 until eaac.shared.InstructionSet.MaxSemDeps) {
@@ -241,8 +241,8 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
       for ((semIdx, fullVal, emptyVal) <- programs) {
         dut.io.instructionStream.valid.poke(true.B)
         dut.io.instructionStream.bits.payload.semAddr.poke(semIdx.U)
-        dut.io.instructionStream.bits.payload.initValues(0).poke(fullVal.U)
-        dut.io.instructionStream.bits.payload.initValues(1).poke(emptyVal.U)
+        dut.io.instructionStream.bits.payload.initFull.poke(fullVal.U)
+        dut.io.instructionStream.bits.payload.initEmpty.poke(emptyVal.U)
 
         var cycles = 0
         while (!dut.io.instructionStream.ready.peek().litToBoolean) {
@@ -274,8 +274,8 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
       // Program semaphore 1: full=3, empty=0
       dut.io.instructionStream.valid.poke(true.B)
       dut.io.instructionStream.bits.payload.semAddr.poke(1.U)
-      dut.io.instructionStream.bits.payload.initValues(0).poke(3.U)
-      dut.io.instructionStream.bits.payload.initValues(1).poke(0.U)
+      dut.io.instructionStream.bits.payload.initFull.poke(3.U)
+      dut.io.instructionStream.bits.payload.initEmpty.poke(0.U)
 
       var cycles = 0
       while (!dut.io.instructionStream.ready.peek().litToBoolean) {

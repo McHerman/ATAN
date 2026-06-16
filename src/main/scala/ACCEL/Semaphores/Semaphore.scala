@@ -4,7 +4,8 @@ import chisel3._
 import chisel3.util._
 
 class SemaphoreProg(val genWidth: Int) extends Bundle {
-  val initValues = Vec(2, UInt(16.W))
+  val initFull   = UInt(16.W)
+  val initEmpty  = UInt(16.W)
   val generation = UInt(genWidth.W)
 }
 
@@ -20,7 +21,7 @@ class SemaphoreEvent()(implicit c: Configuration) extends Bundle {
 
 class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
   val genWidth     = c.semaphoreGenerationWidth
-  val regSelectBit = genWidth // address bit that selects full/empty register
+  val regSelectBit = genWidth // address bit that selects full/empty register: 0 = full, 1 = empty
 
   val io = IO(new Bundle {
     val inPorts  = Vec(2, Flipped(new TilelinkPort))
@@ -34,8 +35,10 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
     port.d.bits := DontCare
   }
 
-  // regs(0) = fullReg, regs(1) = emptyReg; address bit `regSelectBit` selects which
-  val regs = RegInit(VecInit(Seq.fill(2)(0.U(16.W))))
+  // Address bit `regSelectBit` selects which: 0 -> full, 1 -> empty
+  val full  = RegInit(0.U(16.W))
+  val empty = RegInit(0.U(16.W))
+  val regs  = VecInit(full, empty)
 
   // Installed at (re)programming; mismatch with address LSBs is denied.
   val generation = RegInit(0.U(genWidth.W))
@@ -45,22 +48,20 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
   val touched         = RegInit(false.B)
   val completePending = RegInit(false.B)
 
-  //io.progPort.ready := regs(0) === 0.U && regs(1) === 0.U // We only accept reprogramming when semaphore execution has finished
-
-  io.progPort.ready := true.B 
+  io.progPort.ready := true.B
 
   // Should prevent hazards in asynchronous execution
   when(io.progPort.fire){
-    regs(0)         := io.progPort.bits.initValues(0)
-    regs(1)         := io.progPort.bits.initValues(1)
+    full            := io.progPort.bits.initFull
+    empty           := io.progPort.bits.initEmpty
     generation      := io.progPort.bits.generation
-    initFull        := io.progPort.bits.initValues(0)
-    initEmpty       := io.progPort.bits.initValues(1)
+    initFull        := io.progPort.bits.initFull
+    initEmpty       := io.progPort.bits.initEmpty
     touched         := false.B
     completePending := false.B
   }
 
-  val atInit = regs(0) === initFull && regs(1) === initEmpty
+  val atInit = full === initFull && empty === initEmpty
   when(!atInit) { touched := true.B }
   when(touched && atInit && !completePending && !io.progPort.fire) {
     completePending := true.B
@@ -172,15 +173,16 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
         }
       }
       is(decrement){
-        val newVal = regs(reg.address(regSelectBit)) - reg.data
+        val sel    = reg.address(regSelectBit)
+        val newVal = regs(sel) - reg.data
 
         when(!applied) {
-          req(idx)(reg.address(regSelectBit)) := true.B
+          req(idx)(sel) := true.B
 
-          when(grant(idx)(reg.address(regSelectBit))) {
-            regs(reg.address(regSelectBit)) := newVal
-            newValRegs(idx)                 := newVal
-            applied                         := true.B
+          when(grant(idx)(sel)) {
+            when(sel === 0.U) { full := newVal }.otherwise { empty := newVal }
+            newValRegs(idx) := newVal
+            applied         := true.B
           }
         }
 
@@ -201,15 +203,16 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
         }
       }
       is(increment){
-        val newVal = regs(reg.address(regSelectBit)) + reg.data
+        val sel    = reg.address(regSelectBit)
+        val newVal = regs(sel) + reg.data
 
         when(!applied) {
-          req(idx)(reg.address(regSelectBit)) := true.B
+          req(idx)(sel) := true.B
 
-          when(grant(idx)(reg.address(regSelectBit))) {
-            regs(reg.address(regSelectBit)) := newVal
-            newValRegs(idx)                 := newVal
-            applied                         := true.B
+          when(grant(idx)(sel)) {
+            when(sel === 0.U) { full := newVal }.otherwise { empty := newVal }
+            newValRegs(idx) := newVal
+            applied         := true.B
           }
         }
 

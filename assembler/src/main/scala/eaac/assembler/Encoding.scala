@@ -87,7 +87,6 @@ object Encoding {
   )
 
   /** Encode a SemProg instruction (1 slot / 64 b).
-    * Hardware convention: initValues(0) = fullReg, initValues(1) = emptyReg.
     * `generation` is masked to [[InstructionSet.SemGenerationBits]] bits;
     * the hardware ignores any bits beyond its configured genWidth.
     */
@@ -105,9 +104,9 @@ object Encoding {
     val padded = deps.padTo(InstructionSet.MaxSemDeps, 0)
     Encoded(
       SemProg.encode(Map(
-        "semAddr"     -> BigInt(semAddr),
-        "initValues0" -> BigInt(initFull),
-        "initValues1" -> BigInt(initEmpty),
+        "semAddr"    -> BigInt(semAddr),
+        "initFull"   -> BigInt(initFull),
+        "initEmpty"  -> BigInt(initEmpty),
         "generation"  -> BigInt(generation),
         "depCount"    -> BigInt(deps.length),
         "dep0"        -> BigInt(padded(0)),

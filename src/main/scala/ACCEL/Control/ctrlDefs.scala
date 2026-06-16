@@ -105,7 +105,8 @@ class SemProgRow extends Bundle {
 
 class SemProgPayload extends Bundle {
   val semAddr    = UInt(8.W)
-  val initValues = Vec(2, UInt(16.W))
+  val initFull   = UInt(16.W)
+  val initEmpty  = UInt(16.W)
   val generation = UInt(InstructionSet.SemGenerationBits.W)
 }
 
@@ -115,10 +116,10 @@ class SemProgInst(implicit c: Configuration) extends InstBase with Decodable {
 
   private val fieldMap: Map[String, Data] = Map(
     "length" -> length, "opcode" -> opcode,
-    "semAddr"     -> payload.semAddr,
-    "initValues0" -> payload.initValues(0),
-    "initValues1" -> payload.initValues(1),
-    "generation"  -> payload.generation,
+    "semAddr"    -> payload.semAddr,
+    "initFull"   -> payload.initFull,
+    "initEmpty"  -> payload.initEmpty,
+    "generation" -> payload.generation,
     "depCount"    -> row.depCount,
     "dep0"        -> row.depAddrs(0),
     "dep1"        -> row.depAddrs(1),
