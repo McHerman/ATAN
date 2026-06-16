@@ -486,13 +486,23 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
   }
 
   /*
-  "End-to-end XL with 32 semaphores" in {
+  "End-to-end XL" in {
     val testConfig = Configuration
       .default()
       .withBus(_.copy(sourceWidth = 8))
-      .withSemaphore(_.copy(nSemaphores = 32))
-    val msCfg = MemSystemConfig.default().copy(sourceWidth = testConfig.sourceWidth)
-    val asm = new Assembler(AssemblerConfig(dataBusBytes = testConfig.dataBusSize, verbose = true))
+      .withSemaphore(_.copy(nSemaphores = 16))
+      .withSemaphore(_.copy(generationWidth = 2))
+      .withSemaphore(_.copy(queueSize = 8))
+      .withTrigger(_.copy(rows = 64, opMemDepth = 64))
+    val msCfg = MemSystemConfig.default().copy(
+      sourceWidth = testConfig.sourceWidth,
+      semGenWidth = testConfig.semaphoreGenerationWidth,
+    )
+    val asm = new Assembler(AssemblerConfig(
+      dataBusBytes             = testConfig.dataBusSize,
+      semaphoreGenerationWidth = testConfig.semaphoreGenerationWidth,
+      verbose                  = true,
+    ))
 
     val inputPath = "/home/karlhk/dtu/Thesis/hardware/ATAN/test/input_8_nn_xl.eaac"
 
@@ -665,4 +675,109 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
       }
     }
   }   
+
+
+  "End-to-end broadcast" in {
+    val testConfig = Configuration
+      .default()
+      .withBus(_.copy(sourceWidth = 8))
+      .withSemaphore(_.copy(nSemaphores = 32))
+      .withSemaphore(_.copy(generationWidth = 2))
+    val msCfg = MemSystemConfig.small().copy(
+      sourceWidth = testConfig.sourceWidth,
+      semGenWidth = testConfig.semaphoreGenerationWidth,
+    )
+    val asm = new Assembler(AssemblerConfig(
+      dataBusBytes             = testConfig.dataBusSize,
+      semaphoreGenerationWidth = testConfig.semaphoreGenerationWidth,
+      //verbose                  = true,
+    ))
+
+    // Phase 1: Build FlatBuffer program
+    //val programBuf = buildMatmulProgram()
+    val inputPath = "/home/karlhk/dtu/Thesis/hardware/ATAN/test/input_8_broadcast.eaac"
+
+
+    val bytes = Files.readAllBytes(Paths.get(inputPath))
+    val buf = ByteBuffer.wrap(bytes)
+
+    // Phase 2: Assemble into instruction words
+    val assembled = asm.assemble(buf)
+
+    val fn = assembled.functions.head
+    val insts = fn.instructions
+
+    fn.preloads.foreach { preload =>
+      println(f"Preload to address: ${preload.offsetAddress}, tier: ${preload.tier}")
+    }
+
+
+    ////////// Reference import //////////
+
+    case class Tensor(shape: Seq[Int], element_type: String, data: Seq[Int])
+    case class ModelIO(inputs: Seq[Tensor], outputs: Seq[Tensor])
+
+    val jsonStr = Source.fromFile("/home/karlhk/dtu/Thesis/hardware/ATAN/test/input_8_broadcast.reference.json").mkString
+    
+    val parsed = for {
+      json <- parse(jsonStr)
+      model <- json.as[ModelIO]
+    } yield model
+
+    val inputArrays: Seq[Seq[Int]] =
+      parsed.toOption.get.inputs.map(_.data)
+    
+    val outputArrays: Seq[Seq[Int]] =
+      parsed.toOption.get.outputs.map(_.data)
+
+    //val inputsWithShape =
+    //  parsed.inputs.map(t => (t.shape, t.data))
+    //
+    //val outputsWithShape =
+    //  parsed.outputs.map(t => (t.shape, t.data))
+
+    // Phase 3: Simulate hardware
+    simulate(new ATA8(testConfig)) { dut =>
+      totalCycles = 0L
+
+      // Preload memory for each preload entry
+      fn.preloads.foreach { preload =>
+        preloadMem(dut, preload, msCfg)
+      }
+
+      // Stream all assembled instructions to the hardware
+      for (inst <- insts) {
+        sendInst(dut, inst)
+      }
+
+      val execStart = totalCycles
+
+      // Feed each input array via AXIST_inData; rows are reversed to match
+      // the output access pattern (((n - 1) - row) * n + col).
+      inputArrays.foreach { inputArr =>
+        val rows = (0 until n).map { i =>
+          val rowData = (0 until n).map(col => inputArr(((n - 1) - i) * n + col))
+          packRow(rowData)
+        }
+        feedLoadData(dut, rows)
+      }
+
+      // Collect output from AXIST_out
+      val outputRows = collectStoreData(dut, n)
+      val execEnd = totalCycles
+
+      println(f"[E2E] total cycles     : ${totalCycles}%d")
+      println(f"[E2E] execution cycles : ${execEnd - execStart}%d (first load beat → last store beat)")
+
+      // Phase 4: Verify against golden reference
+      for (row <- 0 until n) {
+        val got = unpackRow(outputRows(row))
+        for (col <- 0 until n) {
+          assert(got(col) == (outputArrays(0)(((n - 1) - row) * n + col)),
+            s"Mismatch at ($row,$col): got ${got(col)}, expected ${outputArrays(0)(((n - 1) - row) * n + col)}")
+        }
+      }
+    }
+  }   
+
 }
