@@ -8,6 +8,7 @@ class SemaphoreProgPort()(implicit c: Configuration) extends Bundle {
   val initEmpty  = UInt(16.W)
   val addr       = UInt(16.W)
   val generation = UInt(c.semaphoreGenerationWidth.W)
+  val eventMode  = UInt(2.W)
 }
 
 class SemaphoreBank(noPorts: Int)(implicit c: Configuration) extends Module {
@@ -27,6 +28,7 @@ class SemaphoreBank(noPorts: Int)(implicit c: Configuration) extends Module {
     sem.progPort.bits.initFull     := io.progPort.bits.initFull
     sem.progPort.bits.initEmpty    := io.progPort.bits.initEmpty
     sem.progPort.bits.generation   := io.progPort.bits.generation
+    sem.progPort.bits.eventMode    := io.progPort.bits.eventMode
   }
 
   io.progPort.ready := semaphores(io.progPort.bits.addr).progPort.ready

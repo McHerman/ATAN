@@ -3,10 +3,17 @@ package ATA8
 import chisel3._
 import chisel3.util._
 
+
+object SemEventModes {
+  val RW  = 0.U(2.W)
+  val R   = 1.U(2.W)
+}
+
 class SemaphoreProg(val genWidth: Int) extends Bundle {
   val initFull   = UInt(16.W)
   val initEmpty  = UInt(16.W)
   val generation = UInt(genWidth.W)
+  val eventMode  = UInt(2.W)
 }
 
 object SemaphoreEventCodes {
@@ -45,6 +52,7 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
 
   val initFull        = RegInit(0.U(16.W))
   val initEmpty       = RegInit(0.U(16.W))
+  val eventMode       = RegInit(SemEventModes.RW)
   val touched         = RegInit(false.B)
   val completePending = RegInit(false.B)
 
@@ -57,15 +65,36 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
     generation      := io.progPort.bits.generation
     initFull        := io.progPort.bits.initFull
     initEmpty       := io.progPort.bits.initEmpty
+    eventMode       := io.progPort.bits.eventMode
+    when(io.progPort.bits.eventMode === SemEventModes.R) {printf(p"Loaded READMODE!! semIdx=$semIdx\n")}
     touched         := false.B
     completePending := false.B
   }
 
   val atInit = full === initFull && empty === initEmpty
-  when(!atInit) { touched := true.B }
+  val atReverse = full === initEmpty && empty === initFull
+
+  //when(!atInit) { touched := true.B }
+
+  switch(eventMode){
+    is(SemEventModes.RW) {
+      when(touched && atInit && !completePending && !io.progPort.fire) {
+        completePending := true.B
+      }
+    }
+    is(SemEventModes.R) {
+      when(touched && atReverse && !completePending && !io.progPort.fire) {
+        completePending := true.B
+      }
+    }
+  }
+
+
+  /*
   when(touched && atInit && !completePending && !io.progPort.fire) {
     completePending := true.B
   }
+  */
 
   val fusedAddr =
     if (genWidth == 0) (semIdx).U(c.addrWidth.W)
@@ -198,6 +227,7 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
         port.d.bits.corrupt := 0.U
 
         when(port.d.fire){
+          touched := true.B
           statereg := idle
           applied  := false.B
         }
@@ -228,6 +258,7 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
         port.d.bits.corrupt := 0.U
 
         when(port.d.fire){
+          touched := true.B
           statereg := idle
           applied  := false.B
         }

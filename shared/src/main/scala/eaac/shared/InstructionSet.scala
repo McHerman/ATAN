@@ -167,6 +167,8 @@ object InstructionSet {
     Field("DMAAddr", 110, 4),
   ))
 
+  val EventModeBits = 2
+
   val SemProg = InstructionLayout(5, slots = 2, Seq(
     LengthField,
     OpcodeField,
@@ -174,10 +176,11 @@ object InstructionSet {
     Field("initFull",  16, 16),
     Field("initEmpty", 32, 16),
     Field("generation",  48, SemGenerationBits),
-    Field("depCount",    48 +     SemGenerationBits, 2),
-    Field("dep0",        48 + 2 + SemGenerationBits + 0 * SemDepAddrBits, SemDepAddrBits),
-    Field("dep1",        48 + 2 + SemGenerationBits + 1 * SemDepAddrBits, SemDepAddrBits),
-    Field("dep2",        48 + 2 + SemGenerationBits + 2 * SemDepAddrBits, SemDepAddrBits),
+    Field("eventMode",   48 +     SemGenerationBits, EventModeBits),
+    Field("depCount",    48 + EventModeBits + SemGenerationBits, 2),
+    Field("dep0",        48 + 2 + EventModeBits + SemGenerationBits + 0 * SemDepAddrBits, SemDepAddrBits),
+    Field("dep1",        48 + 2 + EventModeBits + SemGenerationBits + 1 * SemDepAddrBits, SemDepAddrBits),
+    Field("dep2",        48 + 2 + EventModeBits + SemGenerationBits + 2 * SemDepAddrBits, SemDepAddrBits),
   ))
 
   /** All instruction layouts indexed by opcode. */

@@ -95,6 +95,7 @@ object Encoding {
     initEmpty: Int,
     initFull: Int,
     generation: Int = 0,
+    eventMode: Int = 0,
     deps: Seq[Int] = Seq.empty,
   ): Encoded = {
     require(
@@ -108,6 +109,7 @@ object Encoding {
         "initFull"   -> BigInt(initFull),
         "initEmpty"  -> BigInt(initEmpty),
         "generation"  -> BigInt(generation),
+        "eventMode"   -> BigInt(eventMode),
         "depCount"    -> BigInt(deps.length),
         "dep0"        -> BigInt(padded(0)),
         "dep1"        -> BigInt(padded(1)),

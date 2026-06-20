@@ -30,6 +30,7 @@ class SemSystem(noPorts: Int)(implicit c: Configuration) extends Module {
   bank.io.progPort.bits.initFull   := trigger.io.fire.bits.payload.initFull
   bank.io.progPort.bits.initEmpty  := trigger.io.fire.bits.payload.initEmpty
   bank.io.progPort.bits.generation := truncGeneration(trigger.io.fire.bits.payload.generation)
+  bank.io.progPort.bits.eventMode  := trigger.io.fire.bits.payload.eventMode
   trigger.io.fire.ready := bank.io.progPort.ready
 
   trigger.io.inputEvent.valid          := bank.io.eventPort.valid

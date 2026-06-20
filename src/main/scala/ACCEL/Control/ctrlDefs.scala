@@ -108,6 +108,7 @@ class SemProgPayload extends Bundle {
   val initFull   = UInt(16.W)
   val initEmpty  = UInt(16.W)
   val generation = UInt(InstructionSet.SemGenerationBits.W)
+  val eventMode  = UInt(2.W)
 }
 
 class SemProgInst(implicit c: Configuration) extends InstBase with Decodable {
@@ -120,6 +121,7 @@ class SemProgInst(implicit c: Configuration) extends InstBase with Decodable {
     "initFull"   -> payload.initFull,
     "initEmpty"  -> payload.initEmpty,
     "generation" -> payload.generation,
+    "eventMode"  -> payload.eventMode,
     "depCount"    -> row.depCount,
     "dep0"        -> row.depAddrs(0),
     "dep1"        -> row.depAddrs(1),

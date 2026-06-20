@@ -146,7 +146,7 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     val sem      = op.command(new SemAlloc()).asInstanceOf[SemAlloc]
     val fused    = sem.fusedAddress()
     val (semIdx, gen) = decomposeFused(fused)
-
+    val eventMode = sem.eventMode()
     val prevDep      = semAllocPrevFused.get(semIdx).toSeq
     val explicitDeps = (0 until sem.chainsLength()).map(sem.chains(_).toInt)
     val deps         = (prevDep ++ explicitDeps).distinct
@@ -158,6 +158,7 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
       initEmpty  = sem.emptyCount().toInt,
       initFull   = sem.fullCount().toInt,
       generation = gen,
+      eventMode  = eventMode,
       deps       = deps,
     )), Seq.empty)
   }
@@ -220,7 +221,7 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
 
     val srcSem = findSemForBuffer(exec, isAcquire = false, srcId)
     val dstSem = findSemForBuffer(exec, isAcquire = true, dstId)
-    val beats = bufferBeats(src)
+    val totalBytes = bufferTotalBytes(src).toInt
 
     // Buffers/semaphores are routed by tier, not by src/dst role: the buffer
     // sitting on the lower tier always goes on addrs0, the one on the higher
@@ -232,9 +233,9 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
 
     Lowered(Seq(Encoding.encodeDMA(
       func    = dma_func,
-      size    = beats,
-      addrs0  = encodeBufferAddr(lowBuf,  lowSem,  beats),
-      addrd0  = encodeBufferAddr(highBuf, highSem, beats),
+      size    = totalBytes,
+      addrs0  = encodeBufferAddr(lowBuf,  lowSem),
+      addrd0  = encodeBufferAddr(highBuf, highSem),
       dmaAddr = dmaAddr,
     )), Seq.empty)
   }
@@ -246,13 +247,13 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
 
     // Acquire means that the give command produces data
     val dstSem = findSemForBuffer(exec, isAcquire = true, dstId)
-    val beats = bufferBeats(dst)
+    val totalBytes = bufferTotalBytes(dst).toInt
 
     Lowered(Seq(Encoding.encodeLoad(
-      func   = 0, 
+      func   = 0,
       mode   = 0,
-      size   = beats,
-      addrd0 = encodeBufferAddr(dst, dstSem, beats),
+      size   = totalBytes,
+      addrd0 = encodeBufferAddr(dst, dstSem),
     )), Seq.empty)
   }
 
@@ -262,13 +263,12 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     val src = buffers(srcId)
 
     val srcSem = findSemForBuffer(exec, isAcquire = false, srcId)
-
-    val beats = bufferBeats(src)
+    val totalBytes = bufferTotalBytes(src).toInt
 
     Lowered(Seq(Encoding.encodeStore(
       func   = 0,
-      size   = beats,
-      addrs0 = encodeBufferAddr(src, srcSem, beats),
+      size   = totalBytes,
+      addrs0 = encodeBufferAddr(src, srcSem),
     )), Seq.empty)
   }
 
@@ -283,20 +283,9 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
 
     val beats = bufferBeats(dst)
 
-    val addrs0 = {
-      val sem = findSemForBuffer(exec, isAcquire = false, src0Id)
-      encodeBufferAddr(src0, sem, bufferBeats(src0))
-    }
-
-    val addrs1 = {
-      val sem = findSemForBuffer(exec, isAcquire = false, src1Id)
-      encodeBufferAddr(src1, sem, bufferBeats(src1))
-    }
-
-    val addrd0 = {
-      val sem = findSemForBuffer(exec, isAcquire = true, dstId)
-      encodeBufferAddr(dst, sem, beats)
-    }
+    val addrs0 = encodeBufferAddr(src0, findSemForBuffer(exec, isAcquire = false, src0Id))
+    val addrs1 = encodeBufferAddr(src1, findSemForBuffer(exec, isAcquire = false, src1Id))
+    val addrd0 = encodeBufferAddr(dst,  findSemForBuffer(exec, isAcquire = true,  dstId))
 
     Lowered(Seq(Encoding.encodeExecute(
       func   = 0,
@@ -311,10 +300,10 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
   // ── Helpers ───────────────────────────────────────────────────────────
 
   /** Encode a BufferRef's offset as an addrPkg BigInt with optional semaphore. */
-  private def encodeBufferAddr(buf: BufferRef, semAddr: Option[Int], stepSize: Int): BigInt = {
+  private def encodeBufferAddr(buf: BufferRef, sem: Option[(Int, Int)]): BigInt = {
     val offset16 = (buf.offset() & 0xFFFF).toInt
-    semAddr match {
-      case Some(addr) =>
+    sem match {
+      case Some((addr, stepSize)) =>
         AddrPkg.encode(
           addr          = offset16,
           semValid      = true,
@@ -350,19 +339,20 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
 
   /** Find a semaphore dependency that guards a buffer by index, searching
     * either acquires (producer-side) or requires (consumer-side).
+    * Returns (semAddr, stepSize).
     */
   private def findSemForBuffer(
     exec: Execute,
     isAcquire: Boolean,
     bufferId: Int,
-  ): Option[Int] = {
+  ): Option[(Int, Int)] = {
     val count = if (isAcquire) exec.acquiresLength() else exec.requiresLength()
     val getDep = if (isAcquire) exec.acquires(_: Int) else exec.requires(_: Int)
 
     for (i <- 0 until count) {
       val dep = getDep(i)
       if (dep.bufferId() == bufferId)
-        return Some(packTLSemAddr(dep.fusedAddress(), isAcquire))
+        return Some((packTLSemAddr(dep.fusedAddress(), isAcquire), dep.stepSize().toInt))
     }
     None
   }
