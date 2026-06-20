@@ -128,7 +128,7 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.hostIn.a.bits.opcode.poke(0.U) // PutFullData
       dut.io.hostIn.a.bits.param.poke(0.U)
       dut.io.hostIn.a.bits.address.poke(addr.U)
-      dut.io.hostIn.a.bits.size.poke(nBeats.U)
+      dut.io.hostIn.a.bits.size.poke((nBeats * msCfg.dataBusSize).U)
       dut.io.hostIn.a.bits.source.poke(0.U)
       dut.io.hostIn.a.bits.data.poke(beat.U)
       dut.io.hostIn.a.bits.mask.poke(0xFF.U)
@@ -160,7 +160,7 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     val asm = new Assembler(AssemblerConfig(
       dataBusBytes             = testConfig.dataBusSize,
       semaphoreGenerationWidth = testConfig.semaphoreGenerationWidth,
-      verbose                  = true,
+      //verbose                  = true,
     ))
 
     // Phase 1: Build FlatBuffer program
@@ -255,12 +255,14 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
       for (row <- 0 until n) {
         val got = unpackRow(outputRows(row))
         for (col <- 0 until n) {
-          //assert(got(col) == (expected((n - 1) - row)(col) & 0xFF),
-          //  s"Mismatch at ($row,$col): got ${got(col)}, expected ${expected((n - 1) - row)(col) & 0xFF}")
-          //print(f"got ${got(col)} expected ${(expected((n - 1) - row)(col) & 0xFF)}")
-
-
-
+          val exp = outputArrays(0)(((n - 1) - row) * n + col)
+          if (got(col) != exp)
+            println(f"Mismatch at ($row,$col): got ${got(col)}, expected $exp")
+        }
+      }
+      for (row <- 0 until n) {
+        val got = unpackRow(outputRows(row))
+        for (col <- 0 until n) {
           assert(got(col) == (outputArrays(0)(((n - 1) - row) * n + col)),
             s"Mismatch at ($row,$col): got ${got(col)}, expected ${outputArrays(0)(((n - 1) - row) * n + col)}")
         }
@@ -283,7 +285,7 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     val asm = new Assembler(AssemblerConfig(
       dataBusBytes             = testConfig.dataBusSize,
       semaphoreGenerationWidth = testConfig.semaphoreGenerationWidth,
-      verbose                  = true,
+      //verbose                  = true,
     ))
 
     // Phase 1: Build FlatBuffer program
@@ -395,7 +397,7 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     val asm = new Assembler(AssemblerConfig(
       dataBusBytes             = testConfig.dataBusSize,
       semaphoreGenerationWidth = testConfig.semaphoreGenerationWidth,
-      verbose                  = true,
+      //verbose                  = true,
     ))
 
     // Phase 1: Build FlatBuffer program
@@ -586,7 +588,7 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     val asm = new Assembler(AssemblerConfig(
       dataBusBytes             = testConfig.dataBusSize,
       semaphoreGenerationWidth = testConfig.semaphoreGenerationWidth,
-      verbose                  = true,
+      //verbose                  = true,
     ))
 
     // Phase 1: Build FlatBuffer program
@@ -883,6 +885,5 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
       }
     }
   }   
-
 
 }

@@ -90,7 +90,7 @@ class TilelinkProtocolChecker(endpointType: String = "Host", name: String = "", 
   switch(state) {
     is(sIdle) {
       when(a_fire) {
-        expectedBeats  := io.a_bits.size
+        expectedBeats  := io.a_bits.size / c.dataBusSize.U
         timeoutCounter := 0.U
         when(io.a_bits.opcode === TilelinkOpcodes.Get) {
           state           := sReadResp
@@ -99,7 +99,7 @@ class TilelinkProtocolChecker(endpointType: String = "Host", name: String = "", 
         }.otherwise { // PutFullData or PutPartialData
           expectedDOpcode := TilelinkOpcodes.AccessAck
           beatCounter     := 1.U
-          when(io.a_bits.size === 1.U) {
+          when(io.a_bits.size === c.dataBusSize.U) {
             state := sWriteResp
           }.otherwise {
             state := sWriteData

@@ -65,7 +65,7 @@ class TilelinkRWHandler(implicit c: MemBusConfig) extends Module {
           when(io.tl.a.fire) {
             sizeReg := io.tl.a.bits.size
             addrReg := io.tl.a.bits.address
-            beatCnt := io.tl.a.bits.size - 1.U
+            beatCnt := io.tl.a.bits.size - c.dataBusSize.U
             state   := sReadLock
           }
         }.otherwise {
@@ -78,9 +78,9 @@ class TilelinkRWHandler(implicit c: MemBusConfig) extends Module {
           io.wMem.bits.data.strb         := VecInit(io.tl.a.bits.mask.asBools)
           when(io.tl.a.fire) {
             sizeReg := io.tl.a.bits.size
-            when(io.tl.a.bits.size > 1.U) {
+            when(io.tl.a.bits.size > c.dataBusSize.U) {
               addrReg := io.tl.a.bits.address + 1.U
-              beatCnt := io.tl.a.bits.size - 2.U
+              beatCnt := io.tl.a.bits.size - (2 * c.dataBusSize).U
               state   := sWriteLock
             }.otherwise {
               firstBeat := true.B   // single beat: go straight to ack
@@ -104,7 +104,7 @@ class TilelinkRWHandler(implicit c: MemBusConfig) extends Module {
           firstBeat := true.B
           state     := sIdle
         }.otherwise {
-          beatCnt := beatCnt - 1.U
+          beatCnt := beatCnt - c.dataBusSize.U
         }
       }
     }
@@ -129,7 +129,7 @@ class TilelinkRWHandler(implicit c: MemBusConfig) extends Module {
         addrReg := addrReg + 1.U
       }
       when(io.tl.d.fire) {
-        beatCnt := beatCnt - 1.U
+        beatCnt := beatCnt - c.dataBusSize.U
         when(beatCnt === 0.U) { state := sIdle }
       }
     }

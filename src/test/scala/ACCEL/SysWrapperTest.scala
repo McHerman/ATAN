@@ -8,6 +8,7 @@ import org.scalatest.matchers.must.Matchers
 class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   val n = 8
+  val n_in_bytes = n * Configuration.test().dataBusSize
   val maxCycles = 2000
 
   val matrix3: Array[Array[Int]] = Array(
@@ -187,7 +188,7 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.in.request.ready.poke(true.B)
       dut.io.in.request.valid.expect(true.B)
 
-      pokeInstruction(dut, mode = 0, size = n,
+      pokeInstruction(dut, mode = 0, size = (n_in_bytes),
         addr0 = 0, addr1 = 8, addrD = 16)
 
       dut.clock.step()
@@ -205,11 +206,11 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       readPort0.a.bits.opcode.expect(TilelinkOpcodes.Get)
       readPort0.a.bits.address.expect(0.U)
-      readPort0.a.bits.size.expect(n.U)
+      readPort0.a.bits.size.expect((n_in_bytes).U)
 
       readPort1.a.bits.opcode.expect(TilelinkOpcodes.Get)
       readPort1.a.bits.address.expect(8.U)
-      readPort1.a.bits.size.expect(n.U)
+      readPort1.a.bits.size.expect((n_in_bytes).U)
 
       dut.clock.step()
       readPort0.a.ready.poke(false.B)
@@ -219,8 +220,8 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
       // WS mode: both ports receive rows of the matrix
       val inputRows = (0 until n).map(i => packRow(matrix3(i).toSeq))
 
-      sendAccessAckData(dut.clock, readPort0, inputRows, n)
-      sendAccessAckData(dut.clock, readPort1, inputRows, n)
+      sendAccessAckData(dut.clock, readPort0, inputRows, (n_in_bytes))
+      sendAccessAckData(dut.clock, readPort1, inputRows, (n_in_bytes))
 
       // ── Wait for write PutFullData ──
       writePort.a.ready.poke(true.B)
@@ -277,7 +278,7 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.in.request.ready.poke(true.B)
       dut.io.in.request.valid.expect(true.B)
 
-      pokeInstruction(dut, mode = 1, size = n,
+      pokeInstruction(dut, mode = 1, size = (n_in_bytes),
         addr0 = 0, addr1 = 8, addrD = 16)
 
       dut.clock.step()
@@ -308,8 +309,8 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
       val inputRows0 = (0 until n).map(i => packRow((0 until n).map(k => matrix3(k)(i)).toSeq))
       val inputRows1 = (0 until n).map(i => packRow(matrix3(i).toSeq))
 
-      sendAccessAckData(dut.clock, readPort0, inputRows0, n)
-      sendAccessAckData(dut.clock, readPort1, inputRows1, n)
+      sendAccessAckData(dut.clock, readPort0, inputRows0, (n_in_bytes))
+      sendAccessAckData(dut.clock, readPort1, inputRows1, (n_in_bytes))
 
       // ── Wait for write PutFullData ──
       writePort.a.ready.poke(true.B)
@@ -359,9 +360,9 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.in.request.ready.poke(true.B)
       dut.io.in.request.valid.expect(true.B)
 
-      pokeInstructionWithSem(dut, mode = 0, size = n,
+      pokeInstructionWithSem(dut, mode = 0, size = (n_in_bytes),
         addr0 = 0, addr1 = 8, addrD = 16,
-        sem0 = Some((1, n)), sem1 = Some((2, n)))
+        sem0 = Some((1, (n_in_bytes))), sem1 = Some((2, (n_in_bytes))))
 
       dut.clock.step()
       dut.io.in.response.valid.poke(false.B)
@@ -395,8 +396,8 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       // ── Feed read data ──
       val inputRows = (0 until n).map(i => packRow(matrix3(i).toSeq))
-      sendAccessAckData(dut.clock, readPort0, inputRows, n)
-      sendAccessAckData(dut.clock, readPort1, inputRows, n)
+      sendAccessAckData(dut.clock, readPort0, inputRows, (n_in_bytes))
+      sendAccessAckData(dut.clock, readPort1, inputRows, (n_in_bytes))
 
       // ── Semaphore releases (ADDU = 7) — consumers release on base+1 (emptyReg) ──
       handleSemaphoreOp(dut.clock, readSem0, expectedParam = 7, expectedAddr = Some(2))
@@ -444,9 +445,9 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.in.request.ready.poke(true.B)
       dut.io.in.request.valid.expect(true.B)
 
-      pokeInstructionWithSem(dut, mode = 0, size = n,
+      pokeInstructionWithSem(dut, mode = 0, size = (n_in_bytes),
         addr0 = 0, addr1 = 8, addrD = 16,
-        sem0 = Some((1, n)), sem1 = Some((2, n)), semD = Some((3, n)))
+        sem0 = Some((1, (n_in_bytes))), sem1 = Some((2, (n_in_bytes))), semD = Some((3, (n_in_bytes))))
 
       dut.clock.step()
       dut.io.in.response.valid.poke(false.B)
@@ -475,8 +476,8 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       // ── Feed read data ──
       val inputRows = (0 until n).map(i => packRow(matrix3(i).toSeq))
-      sendAccessAckData(dut.clock, readPort0, inputRows, n)
-      sendAccessAckData(dut.clock, readPort1, inputRows, n)
+      sendAccessAckData(dut.clock, readPort0, inputRows, (n_in_bytes))
+      sendAccessAckData(dut.clock, readPort1, inputRows, (n_in_bytes))
 
       // ── Read semaphore releases (consumers: ADDU on base+1) ──
       handleSemaphoreOp(dut.clock, readSem0, expectedParam = 7, expectedAddr = Some(2))
@@ -519,6 +520,7 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
   "SysWrapper should execute WS with chunked semaphore reads" in {
     val stepSize = 4
     val numChunks = n / stepSize
+    val stepSize_in_bytes = 32
 
     simulate(new SysWrapper()(Configuration.test())) { dut =>
       dut.io.scratchIn.flatten.foreach(pokeTLIdle)
@@ -536,9 +538,9 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.in.request.ready.poke(true.B)
       dut.io.in.request.valid.expect(true.B)
 
-      pokeInstructionWithSem(dut, mode = 0, size = n,
+      pokeInstructionWithSem(dut, mode = 0, size = (n_in_bytes),
         addr0 = 0, addr1 = 8, addrD = 16,
-        sem0 = Some((1, stepSize)), sem1 = Some((2, stepSize)))
+        sem0 = Some((1, stepSize_in_bytes)), sem1 = Some((2, stepSize_in_bytes)))
 
       dut.clock.step()
       dut.io.in.response.valid.poke(false.B)
@@ -548,7 +550,8 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       // ── Process each chunk: acquire → read stepSize beats → release ──
       for (chunk <- 0 until numChunks) {
-        val offset = chunk * stepSize
+        val offset    = chunk * stepSize_in_bytes
+        val rowOffset = chunk * stepSize
 
         // Semaphore acquires (consumers: AQGREQ on base+0)
         handleSemaphoreOp(dut.clock, readSem0, expectedParam = 6, expectedAddr = Some(1))
@@ -568,24 +571,26 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
 
         readPort0.a.bits.opcode.expect(TilelinkOpcodes.Get)
         readPort0.a.bits.address.expect((0 + offset).U)
-        readPort0.a.bits.size.expect(stepSize.U)
+        readPort0.a.bits.size.expect(stepSize_in_bytes.U)
 
         readPort1.a.bits.opcode.expect(TilelinkOpcodes.Get)
         readPort1.a.bits.address.expect((8 + offset).U)
-        readPort1.a.bits.size.expect(stepSize.U)
+        readPort1.a.bits.size.expect(stepSize_in_bytes.U)
 
         dut.clock.step()
         readPort0.a.ready.poke(false.B)
         readPort1.a.ready.poke(false.B)
 
         // Feed chunk of read data (stepSize beats per port)
-        val chunkRows = inputRows.slice(offset, offset + stepSize)
-        sendAccessAckData(dut.clock, readPort0, chunkRows, stepSize)
-        sendAccessAckData(dut.clock, readPort1, chunkRows, stepSize)
+        val chunkRows = inputRows.slice(rowOffset, rowOffset + stepSize)
+        sendAccessAckData(dut.clock, readPort0, chunkRows, stepSize_in_bytes)
+        sendAccessAckData(dut.clock, readPort1, chunkRows, stepSize_in_bytes)
 
         // Semaphore releases (consumers: ADDU on base+1)
         handleSemaphoreOp(dut.clock, readSem0, expectedParam = 7, expectedAddr = Some(2))
         handleSemaphoreOp(dut.clock, readSem1, expectedParam = 7, expectedAddr = Some(3))
+
+        print(s"chunk ${chunk} completed \n")
       }
 
       // ── Write phase (no semaphore on destination) ──

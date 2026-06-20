@@ -28,7 +28,7 @@ class TilelinkReadHandler(implicit c: MemBusConfig) extends Module {
     isLocked := true.B
     addrReg := io.tl.a.bits.address
     sizeReg := io.tl.a.bits.size
-    beatCnt := io.tl.a.bits.size - 1.U
+    beatCnt := io.tl.a.bits.size - c.dataBusSize.U
   }
 
   when(isLocked) {
@@ -49,7 +49,7 @@ class TilelinkReadHandler(implicit c: MemBusConfig) extends Module {
       addrReg := addrReg + 1.U
     }
     when(io.tl.d.fire) {
-      beatCnt := beatCnt - 1.U
+      beatCnt := beatCnt - c.dataBusSize.U
 
       when(beatCnt === 0.U) {
         isLocked := false.B

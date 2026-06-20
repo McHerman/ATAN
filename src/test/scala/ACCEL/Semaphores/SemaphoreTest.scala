@@ -766,6 +766,9 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
     }
   }
 
+  // Test is deprecated after introducing triggersystem to semaphore programming, programming doesnt block.
+
+  /*
   "progPort reprogramming should take effect on subsequent requests after completion" in {
     implicit val c = Configuration.default()
     simulate(new Semaphore(0)) { dut =>
@@ -920,6 +923,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.inPorts(1).d.bits.data.expect(77.U)
     }
   }
+  */
 
   "AQGREQ should stall until acquire is valid" in {
     implicit val c = Configuration.default()

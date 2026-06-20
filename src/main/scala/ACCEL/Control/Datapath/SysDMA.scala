@@ -74,9 +74,9 @@ class SysDMA(implicit c: Configuration) extends Module {
           }
 
           io.writePort.valid := true.B
-          beatCnt := beatCnt + 1.U
+          beatCnt := beatCnt + c.dataBusSize.U
 
-          when(beatCnt === (reg.burstCnt - 1.U)) {
+          when(beatCnt === (reg.burstCnt - c.dataBusSize.U)) {
             StateReg := 3.U
           }
         }

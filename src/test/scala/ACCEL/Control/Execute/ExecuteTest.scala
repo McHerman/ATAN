@@ -8,6 +8,7 @@ import org.scalatest.matchers.must.Matchers
 class ExecuteTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   val n = 8
+  //val n_in_bytes = 64 
   val maxCycles = 2000
 
   val matrix3: Array[Array[Int]] = Array(
@@ -136,7 +137,7 @@ class ExecuteTest extends AnyFreeSpec with Matchers with ChiselSim {
       val writePort = dut.io.scratchOut(0)
 
       // ── Issue instruction (WS mode = 0) ──
-      pokeInstruction(dut, mode = 0, size = n,
+      pokeInstruction(dut, mode = 0, size = (n * c.dataBusSize),
         addr0 = 0, addr1 = n*n, addrD = 2*n*n)
 
       waitFor(dut.clock)(dut.io.instructionStream.ready.peek().litToBoolean, "instructionStream.ready")
@@ -154,11 +155,11 @@ class ExecuteTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       readPort0.a.bits.opcode.expect(TilelinkOpcodes.Get)
       readPort0.a.bits.address.expect(0.U)
-      readPort0.a.bits.size.expect(n.U)
+      readPort0.a.bits.size.expect((n * c.dataBusSize).U)
 
       readPort1.a.bits.opcode.expect(TilelinkOpcodes.Get)
       readPort1.a.bits.address.expect((n*n).U)
-      readPort1.a.bits.size.expect(n.U)
+      readPort1.a.bits.size.expect((n * c.dataBusSize).U)
 
       dut.clock.step()
       readPort0.a.ready.poke(false.B)
@@ -167,8 +168,8 @@ class ExecuteTest extends AnyFreeSpec with Matchers with ChiselSim {
       // ── Feed read data (8 beats per port) ──
       val inputRows = (0 until n).map(i => packRow(matrix3(i).toSeq))
 
-      sendAccessAckData(dut.clock, readPort0, inputRows, n)
-      sendAccessAckData(dut.clock, readPort1, inputRows, n)
+      sendAccessAckData(dut.clock, readPort0, inputRows, (n * c.dataBusSize))
+      sendAccessAckData(dut.clock, readPort1, inputRows, (n * c.dataBusSize))
 
       // ── Wait for write PutFullData ──
       writePort.a.ready.poke(true.B)
@@ -211,7 +212,7 @@ class ExecuteTest extends AnyFreeSpec with Matchers with ChiselSim {
       val writePort = dut.io.scratchOut(0)
 
       // ── Issue instruction (OS mode = 1) ──
-      pokeInstruction(dut, mode = 1, size = n,
+      pokeInstruction(dut, mode = 1, size = (n * c.dataBusSize),
         addr0 = 0, addr1 = n*n, addrD = 2*n*n)
 
       waitFor(dut.clock)(dut.io.instructionStream.ready.peek().litToBoolean, "instructionStream.ready")
@@ -242,8 +243,8 @@ class ExecuteTest extends AnyFreeSpec with Matchers with ChiselSim {
       val inputRows0 = (0 until n).map(i => packRow((0 until n).map(k => matrix3(k)(i)).toSeq))
       val inputRows1 = (0 until n).map(i => packRow(matrix3(i).toSeq))
 
-      sendAccessAckData(dut.clock, readPort0, inputRows0, n)
-      sendAccessAckData(dut.clock, readPort1, inputRows1, n)
+      sendAccessAckData(dut.clock, readPort0, inputRows0, (n * c.dataBusSize))
+      sendAccessAckData(dut.clock, readPort1, inputRows1, (n * c.dataBusSize))
 
       // ── Wait for write PutFullData ──
       writePort.a.ready.poke(true.B)

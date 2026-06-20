@@ -54,9 +54,11 @@ class StoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
     simulate(new Store()) { dut =>
       val nBeats = 8
+      val size = 64 
       val srcAddr = 16
 
       // Defaults
+      /*
       dut.io.readPort.a.ready.poke(false.B)
       dut.io.readPort.d.valid.poke(false.B)
       dut.io.readPort.d.bits.opcode.poke(0.U)
@@ -70,6 +72,7 @@ class StoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.semaphoreIF.a.ready.poke(false.B)
       dut.io.semaphoreIF.d.valid.poke(false.B)
       dut.io.AXIST.tready.poke(false.B)
+      */
 
       dut.clock.step(2)
 
@@ -77,7 +80,7 @@ class StoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.instructionStream.valid.poke(true.B)
       dut.io.instructionStream.bits.func.poke(0.U)
       dut.io.instructionStream.bits.mode.poke(0.U)
-      dut.io.instructionStream.bits.size.poke(nBeats.U)
+      dut.io.instructionStream.bits.size.poke(size.U)
       dut.io.instructionStream.bits.addrs(0).addr.poke(srcAddr.U)
       dut.io.instructionStream.bits.addrs(0).sem.valid.poke(false.B)
       dut.io.instructionStream.bits.addrs(0).sem.bits.addr.poke(0.U)
@@ -94,7 +97,7 @@ class StoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       dut.io.readPort.a.bits.opcode.expect(4.U)  // Get
       dut.io.readPort.a.bits.address.expect(srcAddr.U)
-      dut.io.readPort.a.bits.size.expect(nBeats.U)
+      dut.io.readPort.a.bits.size.expect(size.U)
 
       dut.clock.step()
       dut.io.readPort.a.ready.poke(false.B)
@@ -106,7 +109,7 @@ class StoreTest extends AnyFreeSpec with Matchers with ChiselSim {
         dut.io.readPort.d.valid.poke(true.B)
         dut.io.readPort.d.bits.opcode.poke(1.U)  // AccessAckData
         dut.io.readPort.d.bits.param.poke(0.U)
-        dut.io.readPort.d.bits.size.poke(nBeats.U)
+        dut.io.readPort.d.bits.size.poke(size.U)
         dut.io.readPort.d.bits.source.poke(0.U)
         dut.io.readPort.d.bits.sink.poke(0.U)
         dut.io.readPort.d.bits.denied.poke(0.U)
@@ -135,11 +138,13 @@ class StoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
     simulate(new Store()) { dut =>
       val nBeats   = 4
+      val size = 32
       val srcAddr  = 32
       val semAddr  = 2
-      val stepSize = 4
+      val stepSize = 32 
 
       // Defaults
+      /*
       dut.io.readPort.a.ready.poke(false.B)
       dut.io.readPort.d.valid.poke(false.B)
       dut.io.readPort.d.bits.opcode.poke(0.U)
@@ -153,6 +158,7 @@ class StoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.semaphoreIF.a.ready.poke(false.B)
       dut.io.semaphoreIF.d.valid.poke(false.B)
       dut.io.AXIST.tready.poke(false.B)
+      */
 
       dut.clock.step(2)
 
@@ -160,7 +166,7 @@ class StoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.instructionStream.valid.poke(true.B)
       dut.io.instructionStream.bits.func.poke(0.U)
       dut.io.instructionStream.bits.mode.poke(0.U)
-      dut.io.instructionStream.bits.size.poke(nBeats.U)
+      dut.io.instructionStream.bits.size.poke(size.U)
       dut.io.instructionStream.bits.addrs(0).addr.poke(srcAddr.U)
       dut.io.instructionStream.bits.addrs(0).sem.valid.poke(true.B)
       dut.io.instructionStream.bits.addrs(0).sem.bits.addr.poke(semAddr.U)
@@ -193,7 +199,7 @@ class StoreTest extends AnyFreeSpec with Matchers with ChiselSim {
         dut.io.readPort.d.valid.poke(true.B)
         dut.io.readPort.d.bits.opcode.poke(1.U)  // AccessAckData
         dut.io.readPort.d.bits.param.poke(0.U)
-        dut.io.readPort.d.bits.size.poke(nBeats.U)
+        dut.io.readPort.d.bits.size.poke(size.U)
         dut.io.readPort.d.bits.source.poke(0.U)
         dut.io.readPort.d.bits.sink.poke(0.U)
         dut.io.readPort.d.bits.denied.poke(0.U)

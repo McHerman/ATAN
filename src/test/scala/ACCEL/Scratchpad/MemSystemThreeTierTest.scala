@@ -50,6 +50,9 @@ class ThreeTierDUT(msCfg: MemSystemConfig, bankCfg: Configuration) extends Modul
   memSys.io.hostIn.a.bits := DontCare 
 
   memSys.io.hostIn.d.ready := false.B 
+
+
+  semBank.io.eventPort.ready := true.B
 }
 
 class MemSystemDUT(msCfg: MemSystemConfig, bankCfg: Configuration) extends Module {
@@ -108,6 +111,8 @@ class HostInDUT(msCfg: MemSystemConfig, bankCfg: Configuration) extends Module {
   io.tier0Read           <> memSys.io.tier0ReadPorts(0)
   io.dmaInstructionStream <> memSys.io.dmaInstructionStream
   io.semProgPort         <> semBank.io.progPort
+
+  semBank.io.eventPort.ready := true.B
 }
 
 class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
@@ -194,7 +199,7 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
         port.a.valid.poke(true.B)
         port.a.bits.opcode.poke(TilelinkOpcodes.PutFullData)
         port.a.bits.param.poke(0.U)
-        port.a.bits.size.poke(testData.length.U)
+        port.a.bits.size.poke((testData.length * 8).U)
         port.a.bits.source.poke(0.U)
         //port.a.bits.address.poke(i.U)  // TilelinkWriteHandler uses address of first beat
         port.a.bits.address.poke(0.U)  // TilelinkWriteHandler uses address of first beat
@@ -221,7 +226,7 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       // ═══════════════════════════════════════════════════════════════════════
 
       // Init semaphore 0: fullReg=0 (consumer blocks), emptyReg=N (producer can start)
-      programSemaphore(dut, semIdx = 0, full = 0, empty = N)
+      programSemaphore(dut, semIdx = 0, full = 0, empty = N * 8)
 
       // Enqueue both DMA instructions through the command queue
       // DMA[0]: read from t0 addr 0, write to t1 addr 0, prod semaphore 
@@ -229,7 +234,7 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       dut.io.dmaInstructionStream.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.DMAAddr.poke(0.U)
-      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.size.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.func.poke(0.U)
 
       dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(0.U)
@@ -240,7 +245,7 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(SEM_0_P.U)
-      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       var cycles = 0
       while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
@@ -252,23 +257,23 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
 
 
       // DMA[1]: read from t1 addr 0 (with sem), write to t2 addr 0
-      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = N,
-      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = N)
+      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = (N * 8),
+      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = (N * 8))
 
       dut.io.dmaInstructionStream.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.DMAAddr.poke(1.U)
-      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.size.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.func.poke(0.U)
 
       dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(SEM_0_C.U)
-      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(false.B)
       //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(4.U)
-      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       cycles = 0
       while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
@@ -291,29 +296,29 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       // state (producer acquires emptyReg, consumer blocks on fullReg).
       // ═══════════════════════════════════════════════════════════════════════
 
-      programSemaphore(dut, semIdx = 1, full = 0, empty = N)
+      programSemaphore(dut, semIdx = 1, full = 0, empty = (N * 8))
 
 
-      // DMA[1]: read from t2 addr 0, write to t1 addr N 
-      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = N,
-      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = N)
+      // DMA[1]: read from t2 addr 0, write to t1 addr (N * 8) 
+      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = (N * 8),
+      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = (N * 8))
 
       dut.io.dmaInstructionStream.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.DMAAddr.poke(1.U)
-      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.size.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.func.poke(1.U) 
       // We reverse the directionality of the write, data flows from rd to rs
       // B to A  
 
-      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(SEM_1_P.U)
-      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(false.B)
       //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(4.U)
-      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       cycles = 0
       while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
@@ -331,18 +336,18 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       dut.io.dmaInstructionStream.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.DMAAddr.poke(0.U)
-      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.size.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.func.poke(1.U)
 
-      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(false.B)
       //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(0.U)
-      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
-      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(SEM_1_C.U)
-      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       cycles = 0
       while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
@@ -367,9 +372,9 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       readport.a.valid.poke(true.B)
       readport.a.bits.opcode.poke(TilelinkOpcodes.Get)
       readport.a.bits.param.poke(0.U)
-      readport.a.bits.size.poke(N.U)
+      readport.a.bits.size.poke((N * 8).U)
       readport.a.bits.source.poke(0.U)
-      readport.a.bits.address.poke(N.U)
+      readport.a.bits.address.poke((N * 8).U)
       readport.a.bits.mask.poke(0xFF.U)
       readport.a.bits.data.poke(0.U)
       readport.a.bits.corrupt.poke(0.U)
@@ -422,7 +427,7 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
         port.a.valid.poke(true.B)
         port.a.bits.opcode.poke(TilelinkOpcodes.PutFullData)
         port.a.bits.param.poke(0.U)
-        port.a.bits.size.poke(testData.length.U)
+        port.a.bits.size.poke((testData.length * 8).U)
         port.a.bits.source.poke(0.U)
         //port.a.bits.address.poke(i.U)  // TilelinkWriteHandler uses address of first beat
         port.a.bits.address.poke(0.U)  // TilelinkWriteHandler uses address of first beat
@@ -449,27 +454,27 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       // ═══════════════════════════════════════════════════════════════════════
 
       // Init semaphore 0: fullReg=0 (consumer blocks), emptyReg=N (producer can start)
-      programSemaphore(dut, semIdx = 0, full = 0, empty = N)
+      programSemaphore(dut, semIdx = 0, full = 0, empty = (N * 8))
 
 
       // DMA[1]: read from t1 addr 0 (with sem), write to t2 addr 0
-      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = N,
-      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = N)
+      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = (N * 8),
+      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = (N * 8))
 
       dut.io.dmaInstructionStream.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.DMAAddr.poke(1.U)
-      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.size.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.func.poke(0.U)
 
       dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(SEM_0_C.U)
-      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(false.B)
       //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(4.U)
-      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       var cycles = 0
       while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
@@ -485,18 +490,18 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       dut.io.dmaInstructionStream.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.DMAAddr.poke(0.U)
-      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.size.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.func.poke(0.U)
 
       dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(false.B)
       //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(0.U)
-      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(SEM_0_P.U)
-      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       cycles = 0
       while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
@@ -515,31 +520,31 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       // DMA[1] (producer): A writes t1, B reads t2 — prod semaphore
       // DMA[0] (consumer): A writes t0, B reads t1 — cons semaphore
       //
-      // After Phase 2: fullReg=0, emptyReg=N — naturally the right initial
+      // After Phase 2: fullReg=0, emptyReg=(N * 8) — naturally the right initial
       // state (producer acquires emptyReg, consumer blocks on fullReg).
       // ═══════════════════════════════════════════════════════════════════════
 
       // Enqueue both DMA instructions through the command queue
       // DMA[0]: read from t3 addr 0, write to t2 addr 0, no semaphores
-      //enqueueDMAInst(dut, dmaIdx = 0, srcAddr = 0, dstAddr = 0, size = N)
+      //enqueueDMAInst(dut, dmaIdx = 0, srcAddr = 0, dstAddr = 0, size = (N * 8))
 
 
-      programSemaphore(dut, semIdx = 1, full = 0, empty = N)
+      programSemaphore(dut, semIdx = 1, full = 0, empty = (N * 8))
 
       dut.io.dmaInstructionStream.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.DMAAddr.poke(0.U)
-      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.size.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.func.poke(1.U)
 
-      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(false.B)
       //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(0.U)
-      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
-      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(SEM_1_C.U)
-      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       cycles = 0
       while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
@@ -549,26 +554,26 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.clock.step()
       dut.io.dmaInstructionStream.valid.poke(false.B)
 
-      // DMA[1]: read from t2 addr 0, write to t1 addr N 
-      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = N,
-      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = N)
+      // DMA[1]: read from t2 addr 0, write to t1 addr (N * 8) 
+      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = (N * 8),
+      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = (N * 8))
 
       dut.io.dmaInstructionStream.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.DMAAddr.poke(1.U)
-      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.size.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.func.poke(1.U) 
       // We reverse the directionality of the write, data flows from rd to rs
       // B to A  
 
-      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(SEM_1_P.U)
-      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(false.B)
       //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(4.U)
-      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       cycles = 0
       while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
@@ -585,7 +590,7 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       // Phase 4 – Verify: read tier 3 at address 0 to check data survived
       // the downward trip (t3 was not overwritten, data should still be there)
       // ═══════════════════════════════════════════════════════════════════════
-      //val readback = readTier3(dut, N, addr = 0)
+      //val readback = readTier3(dut, (N * 8), addr = 0)
 
       val readport = dut.io.tier0Read
 
@@ -593,9 +598,9 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       readport.a.valid.poke(true.B)
       readport.a.bits.opcode.poke(TilelinkOpcodes.Get)
       readport.a.bits.param.poke(0.U)
-      readport.a.bits.size.poke(N.U)
+      readport.a.bits.size.poke((N * 8).U)
       readport.a.bits.source.poke(0.U)
-      readport.a.bits.address.poke(N.U)
+      readport.a.bits.address.poke((N * 8).U)
       readport.a.bits.mask.poke(0xFF.U)
       readport.a.bits.data.poke(0.U)
       readport.a.bits.corrupt.poke(0.U)
@@ -647,7 +652,7 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.semInstructionStream.valid.poke(true.B)
       dut.io.semInstructionStream.bits.payload.semAddr.poke(0.U)
       dut.io.semInstructionStream.bits.payload.initFull.poke(0.U)
-      dut.io.semInstructionStream.bits.payload.initEmpty.poke(N.U)
+      dut.io.semInstructionStream.bits.payload.initEmpty.poke((N * 8).U)
 
       dut.clock.step()
 
@@ -655,7 +660,7 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.semInstructionStream.valid.poke(true.B)
       dut.io.semInstructionStream.bits.payload.semAddr.poke(0.U)
       dut.io.semInstructionStream.bits.payload.initFull.poke(0.U)
-      dut.io.semInstructionStream.bits.payload.initEmpty.poke(N.U)
+      dut.io.semInstructionStream.bits.payload.initEmpty.poke((N * 8).U)
 
       dut.clock.step()
 
@@ -667,7 +672,7 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
         port.a.valid.poke(true.B)
         port.a.bits.opcode.poke(TilelinkOpcodes.PutFullData)
         port.a.bits.param.poke(0.U)
-        port.a.bits.size.poke(testData.length.U)
+        port.a.bits.size.poke((testData.length * 8).U)
         port.a.bits.source.poke(0.U)
         //port.a.bits.address.poke(i.U)  // TilelinkWriteHandler uses address of first beat
         port.a.bits.address.poke(0.U)  // TilelinkWriteHandler uses address of first beat
@@ -695,22 +700,22 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       // Enqueue both DMA instructions through the command queue
       // DMA[0]: read from t0 addr 0, write to t1 addr 0, prod semaphore 
-      //enqueueDMAInst(dut, dmaIdx = 0, srcAddr = 0, dstAddr = 0, size = N)
+      //enqueueDMAInst(dut, dmaIdx = 0, srcAddr = 0, dstAddr = 0, size = (N * 8))
 
       dut.io.dmaInstructionStream.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.DMAAddr.poke(0.U)
-      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.size.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.func.poke(0.U)
 
       dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(false.B)
       //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(0.U)
-      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(SEM_0_P.U)
-      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       var cycles = 0
       while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
@@ -722,23 +727,23 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
 
 
       // DMA[1]: read from t1 addr 0 (with sem), write to t2 addr 0
-      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = N,
-      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = N)
+      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = (N * 8),
+      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = (N * 8))
 
       dut.io.dmaInstructionStream.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.DMAAddr.poke(1.U)
-      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.size.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.func.poke(0.U)
 
       dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(SEM_0_C.U)
-      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(false.B)
       //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(4.U)
-      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       cycles = 0
       while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
@@ -757,31 +762,31 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       // DMA[1] (producer): A writes t1, B reads t2 — prod semaphore
       // DMA[0] (consumer): A writes t0, B reads t1 — cons semaphore
       //
-      // After Phase 2: fullReg=0, emptyReg=N — naturally the right initial
+      // After Phase 2: fullReg=0, emptyReg=(N * 8) — naturally the right initial
       // state (producer acquires emptyReg, consumer blocks on fullReg).
       // ═══════════════════════════════════════════════════════════════════════
 
 
-      // DMA[1]: read from t2 addr 0, write to t1 addr N 
-      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = N,
-      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = N)
+      // DMA[1]: read from t2 addr 0, write to t1 addr (N * 8) 
+      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = (N * 8),
+      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = (N * 8))
 
       dut.io.dmaInstructionStream.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.DMAAddr.poke(1.U)
-      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.size.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.func.poke(1.U) 
       // We reverse the directionality of the write, data flows from rd to rs
       // B to A  
 
-      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(SEM_0_P.U)
-      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(false.B)
       //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(4.U)
-      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       cycles = 0
       while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
@@ -795,22 +800,22 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       // Enqueue both DMA instructions through the command queue
       // DMA[0]: read from t3 addr 0, write to t2 addr 0, no semaphores
-      //enqueueDMAInst(dut, dmaIdx = 0, srcAddr = 0, dstAddr = 0, size = N)
+      //enqueueDMAInst(dut, dmaIdx = 0, srcAddr = 0, dstAddr = 0, size = (N * 8))
 
       dut.io.dmaInstructionStream.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.DMAAddr.poke(0.U)
-      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.size.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.func.poke(1.U)
 
-      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(false.B)
       //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(0.U)
-      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
-      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(SEM_0_C.U)
-      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       cycles = 0
       while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
@@ -827,7 +832,7 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       // Phase 4 – Verify: read tier 3 at address 0 to check data survived
       // the downward trip (t3 was not overwritten, data should still be there)
       // ═══════════════════════════════════════════════════════════════════════
-      //val readback = readTier3(dut, N, addr = 0)
+      //val readback = readTier3(dut, (N * 8), addr = 0)
 
       val readport = dut.io.tier0Read
 
@@ -835,9 +840,9 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       readport.a.valid.poke(true.B)
       readport.a.bits.opcode.poke(TilelinkOpcodes.Get)
       readport.a.bits.param.poke(0.U)
-      readport.a.bits.size.poke(N.U)
+      readport.a.bits.size.poke((N * 8).U)
       readport.a.bits.source.poke(0.U)
-      readport.a.bits.address.poke(N.U)
+      readport.a.bits.address.poke((N * 8).U)
       readport.a.bits.mask.poke(0xFF.U)
       readport.a.bits.data.poke(0.U)
       readport.a.bits.corrupt.poke(0.U)
@@ -889,7 +894,7 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.semInstructionStream.valid.poke(true.B)
       dut.io.semInstructionStream.bits.payload.semAddr.poke(0.U)
       dut.io.semInstructionStream.bits.payload.initFull.poke(0.U)
-      dut.io.semInstructionStream.bits.payload.initEmpty.poke(N.U)
+      dut.io.semInstructionStream.bits.payload.initEmpty.poke((N * 8).U)
 
       dut.clock.step()
 
@@ -897,7 +902,7 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.semInstructionStream.valid.poke(true.B)
       dut.io.semInstructionStream.bits.payload.semAddr.poke(1.U)
       dut.io.semInstructionStream.bits.payload.initFull.poke(0.U)
-      dut.io.semInstructionStream.bits.payload.initEmpty.poke(N.U)
+      dut.io.semInstructionStream.bits.payload.initEmpty.poke((N * 8).U)
 
       dut.clock.step()
 
@@ -909,7 +914,7 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
         port.a.valid.poke(true.B)
         port.a.bits.opcode.poke(TilelinkOpcodes.PutFullData)
         port.a.bits.param.poke(0.U)
-        port.a.bits.size.poke(testData.length.U)
+        port.a.bits.size.poke((testData.length * 8).U)
         port.a.bits.source.poke(0.U)
         //port.a.bits.address.poke(i.U)  // TilelinkWriteHandler uses address of first beat
         port.a.bits.address.poke(0.U)  // TilelinkWriteHandler uses address of first beat
@@ -937,22 +942,22 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       // Enqueue both DMA instructions through the command queue
       // DMA[0]: read from t0 addr 0, write to t1 addr 0, prod semaphore 
-      //enqueueDMAInst(dut, dmaIdx = 0, srcAddr = 0, dstAddr = 0, size = N)
+      //enqueueDMAInst(dut, dmaIdx = 0, srcAddr = 0, dstAddr = 0, size = (N * 8))
 
       dut.io.dmaInstructionStream.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.DMAAddr.poke(0.U)
-      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.size.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.func.poke(0.U)
 
       dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(false.B)
       //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(0.U)
-      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(SEM_0_P.U)
-      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       var cycles = 0
       while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
@@ -964,23 +969,23 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
 
 
       // DMA[1]: read from t1 addr 0 (with sem), write to t2 addr 0
-      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = N,
-      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = N)
+      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = (N * 8),
+      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = (N * 8))
 
       dut.io.dmaInstructionStream.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.DMAAddr.poke(1.U)
-      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.size.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.func.poke(0.U)
 
       dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(SEM_0_C.U)
-      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(false.B)
       //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(4.U)
-      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       cycles = 0
       while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
@@ -999,31 +1004,31 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       // DMA[1] (producer): A writes t1, B reads t2 — prod semaphore
       // DMA[0] (consumer): A writes t0, B reads t1 — cons semaphore
       //
-      // After Phase 2: fullReg=0, emptyReg=N — naturally the right initial
+      // After Phase 2: fullReg=0, emptyReg=(N * 8) — naturally the right initial
       // state (producer acquires emptyReg, consumer blocks on fullReg).
       // ═══════════════════════════════════════════════════════════════════════
 
 
-      // DMA[1]: read from t2 addr 0, write to t1 addr N 
-      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = N,
-      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = N)
+      // DMA[1]: read from t2 addr 0, write to t1 addr (N * 8) 
+      //enqueueDMAInst(dut, dmaIdx = 1, srcAddr = 0, dstAddr = 0, size = (N * 8),
+      //  srcSemEn = true, srcSemAddr = SEM_DMA1_A, srcSemStep = (N * 8))
 
       dut.io.dmaInstructionStream.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.DMAAddr.poke(1.U)
-      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.size.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.func.poke(1.U) 
       // We reverse the directionality of the write, data flows from rd to rs
       // B to A  
 
-      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(SEM_1_P.U)
-      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(0.U)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(false.B)
       //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(4.U)
-      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+      //dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       cycles = 0
       while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
@@ -1037,22 +1042,22 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       // Enqueue both DMA instructions through the command queue
       // DMA[0]: read from t3 addr 0, write to t2 addr 0, no semaphores
-      //enqueueDMAInst(dut, dmaIdx = 0, srcAddr = 0, dstAddr = 0, size = N)
+      //enqueueDMAInst(dut, dmaIdx = 0, srcAddr = 0, dstAddr = 0, size = (N * 8))
 
       dut.io.dmaInstructionStream.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.DMAAddr.poke(0.U)
-      dut.io.dmaInstructionStream.bits.size.poke(N.U)
+      dut.io.dmaInstructionStream.bits.size.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.func.poke(1.U)
 
-      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrs(0).addr.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.addrs(0).sem.valid.poke(false.B)
       //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.addr.poke(0.U)
-      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke(N.U)
+      //dut.io.dmaInstructionStream.bits.addrs(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
-      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).addr.poke((N * 8).U)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.valid.poke(true.B)
       dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.addr.poke(SEM_1_C.U)
-      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke(N.U)
+      dut.io.dmaInstructionStream.bits.addrd(0).sem.bits.stepSize.bits.poke((N * 8).U)
 
       cycles = 0
       while (!dut.io.dmaInstructionStream.ready.peek().litToBoolean) {
@@ -1069,7 +1074,7 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       // Phase 4 – Verify: read tier 3 at address 0 to check data survived
       // the downward trip (t3 was not overwritten, data should still be there)
       // ═══════════════════════════════════════════════════════════════════════
-      //val readback = readTier3(dut, N, addr = 0)
+      //val readback = readTier3(dut, (N * 8), addr = 0)
 
       val readport = dut.io.tier0Read
 
@@ -1077,9 +1082,9 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
       readport.a.valid.poke(true.B)
       readport.a.bits.opcode.poke(TilelinkOpcodes.Get)
       readport.a.bits.param.poke(0.U)
-      readport.a.bits.size.poke(N.U)
+      readport.a.bits.size.poke((N * 8).U)
       readport.a.bits.source.poke(0.U)
-      readport.a.bits.address.poke(N.U)
+      readport.a.bits.address.poke((N * 8).U)
       readport.a.bits.mask.poke(0xFF.U)
       readport.a.bits.data.poke(0.U)
       readport.a.bits.corrupt.poke(0.U)
@@ -1133,7 +1138,7 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
           hostIn.a.valid.poke(true.B)
           hostIn.a.bits.opcode.poke(TilelinkOpcodes.PutFullData)
           hostIn.a.bits.param.poke(0.U)
-          hostIn.a.bits.size.poke(data.length.U)
+          hostIn.a.bits.size.poke((data.length * 8).U)
           hostIn.a.bits.source.poke(0.U)
           hostIn.a.bits.address.poke(baseAddr.U)
           hostIn.a.bits.mask.poke(0xFF.U)
@@ -1154,7 +1159,7 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
         hostIn.a.valid.poke(true.B)
         hostIn.a.bits.opcode.poke(TilelinkOpcodes.Get)
         hostIn.a.bits.param.poke(0.U)
-        hostIn.a.bits.size.poke(n.U)
+        hostIn.a.bits.size.poke((n * 8).U)
         hostIn.a.bits.source.poke(0.U)
         hostIn.a.bits.address.poke(baseAddr.U)
         hostIn.a.bits.mask.poke(0xFF.U)

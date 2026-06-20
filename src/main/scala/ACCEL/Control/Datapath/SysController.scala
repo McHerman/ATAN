@@ -112,7 +112,7 @@ class SysController(implicit c: Configuration) extends Module {
           (dmaSeq zip readSizes.zipWithIndex).foreach { case (dma, (size, index)) =>
             val addrSum = if (index == 0) 0.U else readSizes.take(index).reduce(_ + _)
             dma.descriptor.bits(0).addr := addrs.addr + addrSum
-            dma.descriptor.bits(0).size := size
+            dma.descriptor.bits(0).size := size * size
             dma.descriptor.valid := true.B
             dma.descriptor.bits(0).writeEn := false.B
             dma.descriptor.bits(0).source := DontCare
@@ -139,14 +139,15 @@ class SysController(implicit c: Configuration) extends Module {
     }
     is(3.U) { // Push to opbuffer and readBuffer
       when(opbuffer.io.WriteData.ready && readBuffer.io.WriteData.ready) {
+        val sizes = VectorFillerFunctions.buildTree(reg.size, c.grainDim, c.dataBusSize)
         opbuffer.io.WriteData.valid       := true.B
         opbuffer.io.WriteData.bits.mode   := reg.mode
-        opbuffer.io.WriteData.bits.size   := reg.size
-        opbuffer.io.WriteData.bits.sizes  := VectorFillerFunctions.buildTree(reg.size, c.grainDim, c.dataBusSize)
+        opbuffer.io.WriteData.bits.size   := sizes(0)
+        opbuffer.io.WriteData.bits.sizes  := sizes
 
         readBuffer.io.WriteData.valid      := true.B
         readBuffer.io.WriteData.bits.addrPkg  := reg.addrd(0)
-        readBuffer.io.WriteData.bits.size  := reg.size
+        readBuffer.io.WriteData.bits.size  := sizes(0)
 
         StateReg := 0.U
       }
@@ -171,7 +172,7 @@ class SysController(implicit c: Configuration) extends Module {
         */
 
         dma.descriptor.bits(0).addr := op.addrPkg.addr + addrSum
-        dma.descriptor.bits(0).size := op.size
+        dma.descriptor.bits(0).size := op.size * op.size 
         dma.descriptor.valid := true.B
 
         dma.descriptor.bits(0).semaphore.get.semEnable := op.addrPkg.sem.valid

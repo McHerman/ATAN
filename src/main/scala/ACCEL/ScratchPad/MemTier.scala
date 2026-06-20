@@ -110,7 +110,7 @@ class TLSplitter(implicit c: MemBusConfig) extends Module {
             io.read.a.bits  := io.in.a.bits
             io.in.a.ready   := io.read.a.ready
             when(io.in.a.fire) {
-              beatCnt := io.in.a.bits.size   // number of D beats expected
+              beatCnt := io.in.a.bits.size - c.dataBusSize.U
               state   := sRead
             }
           }
@@ -120,11 +120,10 @@ class TLSplitter(implicit c: MemBusConfig) extends Module {
             io.write.a.bits  := io.in.a.bits
             io.in.a.ready    := io.write.a.ready
             when(io.in.a.fire) {
-              when(io.in.a.bits.size > 1.U) {
-                beatCnt := io.in.a.bits.size - 1.U   // remaining A beats
+              when(io.in.a.bits.size > c.dataBusSize.U) {
+                beatCnt := io.in.a.bits.size - (2 * c.dataBusSize).U
                 state   := sWrite
               }
-              // single-beat write: stay idle, D ack handled below
             }
           }
           is(TilelinkOpcodes.PutPartialData) {
@@ -149,8 +148,8 @@ class TLSplitter(implicit c: MemBusConfig) extends Module {
       io.in.d.bits     := io.read.d.bits
       io.read.d.ready  := io.in.d.ready
       when(io.in.d.fire) {
-        beatCnt := beatCnt - 1.U
-        when(beatCnt === 1.U) {
+        beatCnt := beatCnt - c.dataBusSize.U
+        when(beatCnt === 0.U) {
           state := sIdle
         }
       }
@@ -162,8 +161,8 @@ class TLSplitter(implicit c: MemBusConfig) extends Module {
       io.write.a.bits  := io.in.a.bits
       io.in.a.ready    := io.write.a.ready
       when(io.in.a.fire) {
-        beatCnt := beatCnt - 1.U
-        when(beatCnt === 1.U) {
+        beatCnt := beatCnt - c.dataBusSize.U
+        when(beatCnt === 0.U) {
           state := sIdle
         }
       }

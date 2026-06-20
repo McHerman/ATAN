@@ -49,12 +49,13 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
   val reg           = Reg(new dmaDescriptor(config.semaphore))
   val beatCnt       = RegInit(0.U(24.W))
   val effectiveAddr = RegInit(0.U(c.addrWidth.W))
+  val stepSize = RegInit(0.U(24.W))
   val effectiveSize = RegInit(0.U(24.W))
 
   // Only allocated when the config actually needs them
   val isWrite   = if (config.read && config.write) Some(RegInit(true.B)) else None
-  val remaining = if (config.semaphore) Some(RegInit(0.U(24.W))) else None
-
+  //val remaining = if (config.semaphore) Some(RegInit(0.U(24.W))) else None
+  val remaining = RegInit(0.U(24.W))
 
 
   switch(StateReg) {
@@ -69,11 +70,12 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
         isWrite.foreach   { _ := desc.writeEn }
         effectiveAddr := desc.addr
 
+        remaining := desc.size
+
         if (config.semaphore) {
-          remaining.get := desc.size
-          effectiveSize := Mux(desc.semaphore.get.semEnable, desc.semaphore.get.semStepSize, desc.size)
+          stepSize := Mux(desc.semaphore.get.semEnable, desc.semaphore.get.semStepSize, desc.size)
         } else {
-          effectiveSize := desc.size
+          stepSize := desc.size
         }
 
         StateReg := ((config.semaphore, config.read, config.write) match {
@@ -95,26 +97,29 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
     switch(StateReg) {
       // WriteFirst – issue first A-beat
       is(writeFirst) {
-        assert(effectiveSize =/= 0.U)
+        assert(stepSize =/= 0.U)
+
+        val effectiveSizeVal = Mux(stepSize < remaining, stepSize, remaining)
+        val newBeatCnt       = effectiveSizeVal - c.dataBusSize.U
+
+        beatCnt       := newBeatCnt
+        effectiveSize := effectiveSizeVal
 
         io.tl.a.valid        := dataIn.request.ready
         io.tl.a.bits.opcode  := TilelinkOpcodes.PutFullData
         io.tl.a.bits.param   := 0.U
         io.tl.a.bits.address := effectiveAddr
-        io.tl.a.bits.size    := effectiveSize
+        io.tl.a.bits.size    := effectiveSizeVal
         io.tl.a.bits.source  := sourceId.U
         io.tl.a.bits.data    := dataIn.response.bits.readData
-        io.tl.a.bits.mask    := HelperFunctions.uintToBoolVec(effectiveSize, c.dataBusSize).asUInt
+        io.tl.a.bits.mask    := HelperFunctions.uintToBoolVec(stepSize, c.dataBusSize).asUInt
 
         dataIn.request.valid := io.tl.a.ready
 
         when(io.tl.a.fire) {
-          beatCnt := 1.U
-
-          when(effectiveSize > 1.U) {
+          when(newBeatCnt >= c.dataBusSize.U) {
             StateReg := writeRest
           }.otherwise {
-            beatCnt  := 0.U
             StateReg := writeAck
           }
         }
@@ -135,8 +140,8 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
         when(io.tl.a.fire) {
           dataIn.request.valid := true.B
 
-          when(beatCnt < (effectiveSize - 1.U)) {
-            beatCnt := beatCnt + 1.U
+          when(beatCnt > c.dataBusSize.U) {
+            beatCnt := beatCnt - c.dataBusSize.U
           }.otherwise {
             beatCnt  := 0.U
             StateReg := writeAck
@@ -148,7 +153,8 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
       is(writeAck) {
         io.tl.d.ready := true.B
 
-        when(effectiveSize === 0.U || io.tl.d.valid) {
+        //when(stepSize === 0.U || io.tl.d.valid) {
+        when(io.tl.d.valid) {
           StateReg := (config.semaphore match {
             case true  => Mux(reg.semaphore.get.semEnable, semReleaseSend, writeRespond)
             case false => writeRespond
@@ -176,13 +182,16 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
     switch(StateReg) {
       // ReadIssue – issue Get
       is(readIssue) {
-        assert(effectiveSize =/= 0.U)
+        assert(stepSize =/= 0.U)
+
+        val effectiveSizeVal = Mux(stepSize < remaining, stepSize, remaining)
+        effectiveSize := effectiveSizeVal
 
         io.tl.a.valid        := true.B
         io.tl.a.bits.opcode  := TilelinkOpcodes.Get
         io.tl.a.bits.param   := 0.U
         io.tl.a.bits.address := effectiveAddr
-        io.tl.a.bits.size    := effectiveSize
+        io.tl.a.bits.size    := effectiveSizeVal
         io.tl.a.bits.source  := sourceId.U
         io.tl.a.bits.corrupt := 0.U
 
@@ -200,8 +209,8 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
           dataOut.valid := true.B
           dataOut.bits  := io.tl.d.bits.data
 
-          when(beatCnt < (effectiveSize - 1.U)) {
-            beatCnt := beatCnt + 1.U
+          when(beatCnt < effectiveSize - c.dataBusSize.U) {
+            beatCnt := beatCnt + c.dataBusSize.U
           }.otherwise {
             beatCnt  := 0.U
 
@@ -333,11 +342,11 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
             // gen mismatch: retry without advancing remaining/effectiveAddr.
             StateReg := semReleaseSend
           }.otherwise {
-            val next = remaining.get - reg.semaphore.get.semStepSize
-            remaining.get := next
+            val next = remaining - effectiveSize
+            remaining := next
 
             when(next > 0.U) {
-              effectiveAddr := effectiveAddr + reg.semaphore.get.semStepSize
+              effectiveAddr := effectiveAddr + effectiveSize
               StateReg := semAcquireSend
             }.otherwise {
               StateReg := ((config.read, config.write) match {

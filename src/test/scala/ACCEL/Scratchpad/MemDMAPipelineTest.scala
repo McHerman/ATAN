@@ -96,7 +96,7 @@ class MemDMAPipelineTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       dut.io.interface.descriptor.valid.poke(true.B)
       dut.io.interface.descriptor.bits(0).addr.poke(0x100.U)
-      dut.io.interface.descriptor.bits(0).size.poke(1.U)
+      dut.io.interface.descriptor.bits(0).size.poke(c.dataBusSize.U)
       dut.io.interface.descriptor.bits(0).writeEn.poke(true.B)
       dut.io.interface.descriptor.bits(0).source.poke(0.U)
       dut.io.interface.descriptor.bits(0).sink.poke(0.U)
@@ -111,7 +111,7 @@ class MemDMAPipelineTest extends AnyFreeSpec with Matchers with ChiselSim {
       waitFor(dut)(dut.io.tl.a.valid.peek().litToBoolean, "tl.a.valid")
       dut.io.tl.a.bits.opcode.expect(TilelinkOpcodes.PutFullData)
       dut.io.tl.a.bits.address.expect(0x100.U)
-      dut.io.tl.a.bits.size.expect(1.U)
+      dut.io.tl.a.bits.size.expect(c.dataBusSize.U)
       dut.io.tl.a.bits.data.expect(0xAB.U)
 
       dut.io.tl.a.ready.poke(true.B)
@@ -136,7 +136,8 @@ class MemDMAPipelineTest extends AnyFreeSpec with Matchers with ChiselSim {
   "MemDMAPipeline should handle multi-beat write without semaphores" in {
     simulate(new TLDMA(fullConfig)) { dut =>
       val baseAddr = 0x200
-      val size     = 4
+      val nBeats   = 4
+      val size     = nBeats * c.dataBusSize
       val beatData = Array(0x10, 0x20, 0x30, 0x40)
 
       pokeTLDIdle(dut)
@@ -157,7 +158,7 @@ class MemDMAPipelineTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.clock.step()
       dut.io.interface.descriptor.valid.poke(false.B)
 
-      for (beat <- 0 until size) {
+      for (beat <- 0 until nBeats) {
         dut.io.dataIn.get.response.bits.readData.poke(beatData(beat).U)
         dut.io.dataIn.get.request.ready.poke(true.B)
         waitFor(dut)(dut.io.tl.a.valid.peek().litToBoolean, s"tl.a.valid beat $beat")
@@ -186,8 +187,9 @@ class MemDMAPipelineTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "MemDMAPipeline RestartOnStep: single-step write follows acquire→write→release" in {
     simulate(new TLDMA(fullConfig)) { dut =>
-      val semAddr  = 0x06
-      val stepSize = 4
+      val semAddr      = 0x06
+      val beatsPerStep = 4
+      val stepSize     = beatsPerStep * c.dataBusSize
 
       pokeTLDIdle(dut)
       pokeSemIdle(dut)
@@ -225,7 +227,7 @@ class MemDMAPipelineTest extends AnyFreeSpec with Matchers with ChiselSim {
       completeSemOp(dut)
 
       // 2. Write
-      for (_ <- 0 until stepSize) {
+      for (_ <- 0 until beatsPerStep) {
         waitFor(dut)(dut.io.tl.a.valid.peek().litToBoolean, "tl.a beat")
         dut.io.tl.a.ready.poke(true.B)
         dut.clock.step()
@@ -255,11 +257,12 @@ class MemDMAPipelineTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "MemDMAPipeline RestartOnStep: multi-step read repeats acquire→read→release per step" in {
     simulate(new TLDMA(fullConfig)) { dut =>
-      val baseAddr  = 0x300
-      val semAddr   = 0x08
-      val stepSize  = 2
-      val nSteps    = 3
-      val totalSize = stepSize * nSteps
+      val baseAddr     = 0x300
+      val semAddr      = 0x08
+      val beatsPerStep = 2
+      val nSteps       = 3
+      val stepSize     = beatsPerStep * c.dataBusSize
+      val totalSize    = stepSize * nSteps
 
       pokeTLDIdle(dut)
       pokeSemIdle(dut)
@@ -306,7 +309,7 @@ class MemDMAPipelineTest extends AnyFreeSpec with Matchers with ChiselSim {
         dut.clock.step()
         dut.io.tl.a.ready.poke(false.B)
 
-        for (beat <- 0 until stepSize) {
+        for (beat <- 0 until beatsPerStep) {
           waitFor(dut)(dut.io.tl.d.ready.peek().litToBoolean, s"D beat $step/$beat")
           dut.io.tl.d.valid.poke(true.B)
           dut.io.tl.d.bits.opcode.poke(TilelinkOpcodes.AccessAckData)

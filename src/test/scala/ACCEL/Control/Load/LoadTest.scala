@@ -78,6 +78,8 @@ class LoadTest extends AnyFreeSpec with Matchers with ChiselSim {
       val nBeats = 8
       val destAddr = 16
 
+      val size = 64
+
       // Defaults
       dut.io.scratchOut.a.ready.poke(false.B)
       dut.io.scratchOut.d.valid.poke(false.B)
@@ -91,7 +93,7 @@ class LoadTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.instructionStream.valid.poke(true.B)
       dut.io.instructionStream.bits.func.poke(0.U)
       dut.io.instructionStream.bits.mode.poke(0.U)
-      dut.io.instructionStream.bits.size.poke(nBeats.U)
+      dut.io.instructionStream.bits.size.poke(size.U)
       dut.io.instructionStream.bits.addrd(0).addr.poke(destAddr.U)
       dut.io.instructionStream.bits.addrd(0).sem.valid.poke(false.B)
       dut.io.instructionStream.bits.addrd(0).sem.bits.addr.poke(0.U)
@@ -118,7 +120,7 @@ class LoadTest extends AnyFreeSpec with Matchers with ChiselSim {
         // Verify TileLink A channel
         dut.io.scratchOut.a.bits.opcode.expect(0.U)  // PutFullData
         dut.io.scratchOut.a.bits.address.expect(destAddr.U)
-        dut.io.scratchOut.a.bits.size.expect(nBeats.U)
+        dut.io.scratchOut.a.bits.size.expect(size.U)
         dut.io.scratchOut.a.bits.data.expect(matrix(beat).U)
 
         dut.clock.step()
@@ -142,9 +144,10 @@ class LoadTest extends AnyFreeSpec with Matchers with ChiselSim {
 
     simulate(new Load()) { dut =>
       val nBeats   = 4
+      val size   = 32 
       val destAddr = 32
       val semAddr  = 2
-      val stepSize = 4
+      val stepSize = 32 
 
       // Defaults
       dut.io.scratchOut.a.ready.poke(false.B)
@@ -159,7 +162,7 @@ class LoadTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.instructionStream.valid.poke(true.B)
       dut.io.instructionStream.bits.func.poke(0.U)
       dut.io.instructionStream.bits.mode.poke(0.U)
-      dut.io.instructionStream.bits.size.poke(nBeats.U)
+      dut.io.instructionStream.bits.size.poke(size.U)
       dut.io.instructionStream.bits.addrd(0).addr.poke(destAddr.U)
       dut.io.instructionStream.bits.addrd(0).sem.valid.poke(true.B)
       dut.io.instructionStream.bits.addrd(0).sem.bits.addr.poke(semAddr.U)

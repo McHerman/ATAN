@@ -222,31 +222,33 @@ class MemDMATest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "MemDMA should pass ADDU semaphore requests through both pipeline ports after transfer" in {
     simulate(new MemDMA()) { dut =>
-      pokeMemPortsIdle(dut)
-      pokeSemPortsIdle(dut)
+      //pokeMemPortsIdle(dut)
+      //pokeSemPortsIdle(dut)
+
+      val size = 8 // One beat
       dut.io.interface.response.ready.poke(false.B)
 
       // Pipeline A reads from portA; pipeline B writes to portB using data from AtoB FIFO
       dut.io.interface.descriptor.valid.poke(true.B)
       dut.io.interface.descriptor.bits(0).addr.poke(0x100.U)
-      dut.io.interface.descriptor.bits(0).size.poke(1.U)
+      dut.io.interface.descriptor.bits(0).size.poke(size.U)
       dut.io.interface.descriptor.bits(0).writeEn.poke(false.B)
       dut.io.interface.descriptor.bits(0).source.poke(0.U)
       dut.io.interface.descriptor.bits(0).sink.poke(0.U)
       dut.io.interface.descriptor.bits(0).semaphore.get.semEnable.poke(true.B)
       dut.io.interface.descriptor.bits(0).semaphore.get.mode.poke(0.U)
       dut.io.interface.descriptor.bits(0).semaphore.get.semAddr.poke(0x10.U)
-      dut.io.interface.descriptor.bits(0).semaphore.get.semStepSize.poke(1.U)
+      dut.io.interface.descriptor.bits(0).semaphore.get.semStepSize.poke(size.U)
 
       dut.io.interface.descriptor.bits(1).addr.poke(0x200.U)
-      dut.io.interface.descriptor.bits(1).size.poke(1.U)
+      dut.io.interface.descriptor.bits(1).size.poke(size.U)
       dut.io.interface.descriptor.bits(1).writeEn.poke(true.B)
       dut.io.interface.descriptor.bits(1).source.poke(0.U)
       dut.io.interface.descriptor.bits(1).sink.poke(0.U)
       dut.io.interface.descriptor.bits(1).semaphore.get.semEnable.poke(true.B)
       dut.io.interface.descriptor.bits(1).semaphore.get.mode.poke(0.U)
       dut.io.interface.descriptor.bits(1).semaphore.get.semAddr.poke(0x20.U)
-      dut.io.interface.descriptor.bits(1).semaphore.get.semStepSize.poke(1.U)
+      dut.io.interface.descriptor.bits(1).semaphore.get.semStepSize.poke(size.U)
 
       dut.clock.step()
       dut.io.interface.descriptor.valid.poke(false.B)

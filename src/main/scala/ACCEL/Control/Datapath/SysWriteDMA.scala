@@ -63,9 +63,9 @@ class SysWriteDMA(implicit c: Configuration) extends Module {
           io.scratchOut.a.bits.corrupt := 0.U
 
           when(io.scratchOut.a.fire) {
-            beatCnt := 1.U
+            beatCnt := c.dataBusSize.U
 
-            when(reg.burstCnt > 1.U) {
+            when(reg.burstCnt > c.dataBusSize.U) {
               StateReg := 2.U
             }.otherwise {
               beatCnt := 0.U
@@ -93,8 +93,8 @@ class SysWriteDMA(implicit c: Configuration) extends Module {
         io.scratchOut.a.bits.corrupt := 0.U
 
         when(io.scratchOut.a.fire) {
-          when(beatCnt < (reg.burstCnt - 1.U)) {
-            beatCnt := beatCnt + 1.U
+          when(beatCnt < (reg.burstCnt - c.dataBusSize.U)) {
+            beatCnt := beatCnt + c.dataBusSize.U
           }.otherwise {
             beatCnt := 0.U
             StateReg := 3.U
