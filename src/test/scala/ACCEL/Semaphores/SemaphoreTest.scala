@@ -1098,4 +1098,83 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.eventPort.valid.expect(false.B)
     }
   }
+
+
+  "Get with mismatched gen should return 0" in {
+    implicit val c = Configuration(semaphore = SemaphoreParams(generationWidth = 1))
+    simulate(new Semaphore(0)) { dut =>
+      defaultPokes(dut)
+
+      dut.io.progPort.valid.poke(true.B)
+      dut.io.progPort.bits.initFull.poke(5.U) // fullReg
+      dut.io.progPort.bits.initEmpty.poke(0.U)  // emptyReg
+      dut.io.progPort.bits.generation.poke(1.U)  // gen 
+      dut.clock.step()
+      dut.io.progPort.valid.poke(false.B)
+
+
+      ////////////////////////////////////////////////// 
+
+
+      dut.io.inPorts(0).a.ready.expect(true.B)
+      dut.io.inPorts(0).a.valid.poke(true.B)
+
+      dut.io.inPorts(0).a.bits.opcode.poke(TilelinkOpcodes.Get)
+      //dut.io.inPort0(1).a.bits.param.poke(ArithmeticDataParam.AQGREQ)
+      dut.io.inPorts(0).a.bits.address.poke(0.U)
+      //dut.io.inPort0(1).a.bits.data.poke(1.U) // acquire when greater or equal to 1 
+      dut.io.inPorts(0).a.bits.source.poke(0.U)
+      dut.io.inPorts(0).a.bits.size.poke(2.U)
+      dut.io.inPorts(0).a.bits.mask.poke(0.U)
+      dut.io.inPorts(0).a.bits.corrupt.poke(0.U)
+
+      dut.clock.step(1)
+
+      dut.io.inPorts(0).a.valid.poke(false.B)
+
+      dut.io.inPorts(0).d.ready.poke(true.B)
+      dut.io.inPorts(0).d.valid.expect(true.B)
+      dut.io.inPorts(0).d.bits.data.expect(0.U)
+    }
+  }
+
+  "Get with correct gen should return data" in {
+    implicit val c = Configuration(semaphore = SemaphoreParams(generationWidth = 1))
+    simulate(new Semaphore(0)) { dut =>
+      defaultPokes(dut)
+
+      dut.io.progPort.valid.poke(true.B)
+      dut.io.progPort.bits.initFull.poke(5.U) // fullReg
+      dut.io.progPort.bits.initEmpty.poke(0.U)  // emptyReg
+      dut.io.progPort.bits.generation.poke(1.U)  // gen 
+      dut.clock.step()
+      dut.io.progPort.valid.poke(false.B)
+
+
+      ////////////////////////////////////////////////// 
+
+
+      dut.io.inPorts(0).a.ready.expect(true.B)
+      dut.io.inPorts(0).a.valid.poke(true.B)
+
+      dut.io.inPorts(0).a.bits.opcode.poke(TilelinkOpcodes.Get)
+      dut.io.inPorts(0).a.bits.address.poke(1.U)
+      dut.io.inPorts(0).a.bits.source.poke(0.U)
+      dut.io.inPorts(0).a.bits.size.poke(2.U)
+      dut.io.inPorts(0).a.bits.mask.poke(0.U)
+      dut.io.inPorts(0).a.bits.corrupt.poke(0.U)
+
+      dut.clock.step(1)
+
+      dut.io.inPorts(0).a.valid.poke(false.B)
+
+      dut.io.inPorts(0).d.ready.poke(true.B)
+      dut.io.inPorts(0).d.valid.expect(true.B)
+      dut.io.inPorts(0).d.bits.data.expect(5.U)
+    }
+  }
+
+
+
+
 }
