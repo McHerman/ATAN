@@ -282,15 +282,15 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
         }
       }
 
-      // SemDecrementSend – SUBU on the acquire register to consume the token
+      // SemDecrementSend – ADD(negative) on the acquire register to consume the token
       is(semDecrementSend) {
         sem.a.valid        := true.B
         sem.a.bits.opcode  := TilelinkOpcodes.ArithmeticData
-        sem.a.bits.param   := ArithmeticDataParam.SUBU
+        sem.a.bits.param   := ArithmeticDataParam.ADD
         sem.a.bits.size    := 0.U
         sem.a.bits.source  := sourceId.U
         sem.a.bits.address := semAcquireAddr
-        sem.a.bits.data    := reg.semaphore.get.semStepSize
+        sem.a.bits.data    := (-reg.semaphore.get.semStepSize.asSInt).asUInt
         sem.a.bits.mask    := Fill(c.dataBusSize, 1.U(1.W))
         sem.a.bits.corrupt := 0.U
 
@@ -317,11 +317,11 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
         }
       }
 
-      // SemRelease – ADDU on the opposite register, then loop or finish
+      // SemRelease – ADD(positive) on the opposite register, then loop or finish
       is(semReleaseSend) {
         sem.a.valid        := true.B
         sem.a.bits.opcode  := TilelinkOpcodes.ArithmeticData
-        sem.a.bits.param   := ArithmeticDataParam.ADDU
+        sem.a.bits.param   := ArithmeticDataParam.ADD
         sem.a.bits.size    := 0.U
         sem.a.bits.source  := sourceId.U
         sem.a.bits.address := semReleaseAddr

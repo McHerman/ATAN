@@ -110,7 +110,8 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
   }
 
 
-  val idle :: acquire :: acquireReturn :: decrement :: increment :: denied :: Nil = Enum(6)
+  //val idle :: acquire :: acquireReturn :: decrement :: increment :: denied :: Nil = Enum(6)
+  val idle :: acquire :: acquireReturn :: modify :: denied :: Nil = Enum(5)
 
   val stateregs        = RegInit(VecInit(Seq.fill(2)(idle)))
   val inputregs        = Reg(Vec(2, io.inPorts(0).a.bits.cloneType))
@@ -162,12 +163,19 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
               is(ArithmeticDataParam.AQGREQ){
                 statereg := acquire
               }
+              /*
               is(ArithmeticDataParam.SUBU){
                 statereg := decrement
               }
               is(ArithmeticDataParam.ADDU){
                 statereg := increment
               }
+              */
+              is(ArithmeticDataParam.ADD){
+                statereg := modify 
+              }
+
+
               /*
               default(){
                 // Unsupported operation
@@ -201,6 +209,7 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
           statereg := idle
         }
       }
+      /*
       is(decrement){
         val sel    = reg.address(regSelectBit)
         val newVal = regs(sel) - reg.data
@@ -233,8 +242,48 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
         }
       }
       is(increment){
+        val sel    = reg.address(regselectbit)
+        val newval = regs(sel) + reg.data
+
+        when(!applied) {
+          req(idx)(sel) := true.b
+
+          when(grant(idx)(sel)) {
+            when(sel === 0.u) { full := newval }.otherwise { empty := newval }
+            newvalregs(idx) := newval
+            applied         := true.b
+          }
+        }
+
+        port.d.valid := applied
+
+        port.d.bits.opcode := tilelinkopcodes.accessackdata
+        port.d.bits.param  := 0.u
+        port.d.bits.size   := 0.u
+        port.d.bits.source := reg.source
+        port.d.bits.sink   := dontcare // todo, find some better use for this
+        port.d.bits.denied := false.b
+        port.d.bits.data   := newvalregs(idx)
+        port.d.bits.corrupt := 0.u
+
+        when(port.d.fire){
+          touched := true.b
+          statereg := idle
+          applied  := false.b
+        }
+      }
+      */
+      is(modify){
         val sel    = reg.address(regSelectBit)
-        val newVal = regs(sel) + reg.data
+        //val newVal = regs(sel) - reg.data
+        val newVal = Wire(UInt(16.W)) 
+
+        when(reg.data.asSInt >= 0.S){
+          newVal := regs(sel) + reg.data.asUInt
+        }.otherwise{
+          newVal := regs(sel) - reg.data.asUInt
+        }
+  
 
         when(!applied) {
           req(idx)(sel) := true.B
@@ -263,6 +312,11 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
           applied  := false.B
         }
       }
+
+
+
+
+
       is(denied){
         // gen mismatch: return denied AccessAckData and drop the request.
         port.d.valid := true.B

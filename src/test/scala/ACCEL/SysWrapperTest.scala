@@ -372,9 +372,9 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
       handleSemaphoreOp(dut.clock, readSem0, expectedParam = 6, expectedAddr = Some(1))
       handleSemaphoreOp(dut.clock, readSem1, expectedParam = 6, expectedAddr = Some(2))
 
-      // ── Semaphore decrements (SUBU = 5) ──
-      handleSemaphoreOp(dut.clock, readSem0, expectedParam = 5, expectedAddr = Some(1))
-      handleSemaphoreOp(dut.clock, readSem1, expectedParam = 5, expectedAddr = Some(2))
+      // ── Semaphore decrements (ADD negative = 4) ──
+      handleSemaphoreOp(dut.clock, readSem0, expectedParam = 4, expectedAddr = Some(1))
+      handleSemaphoreOp(dut.clock, readSem1, expectedParam = 4, expectedAddr = Some(2))
 
       // ── Wait for read Gets ──
       readPort0.a.ready.poke(true.B)
@@ -399,9 +399,9 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
       sendAccessAckData(dut.clock, readPort0, inputRows, (n_in_bytes))
       sendAccessAckData(dut.clock, readPort1, inputRows, (n_in_bytes))
 
-      // ── Semaphore releases (ADDU = 7) — consumers release on base+1 (emptyReg) ──
-      handleSemaphoreOp(dut.clock, readSem0, expectedParam = 7, expectedAddr = Some(2))
-      handleSemaphoreOp(dut.clock, readSem1, expectedParam = 7, expectedAddr = Some(3))
+      // ── Semaphore releases (ADD positive = 4) — consumers release on base+1 (emptyReg) ──
+      handleSemaphoreOp(dut.clock, readSem0, expectedParam = 4, expectedAddr = Some(2))
+      handleSemaphoreOp(dut.clock, readSem1, expectedParam = 4, expectedAddr = Some(3))
 
       // ── Wait for write PutFullData and verify ──
       writePort.a.ready.poke(true.B)
@@ -457,9 +457,9 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
       handleSemaphoreOp(dut.clock, readSem0, expectedParam = 6, expectedAddr = Some(1))
       handleSemaphoreOp(dut.clock, readSem1, expectedParam = 6, expectedAddr = Some(2))
 
-      // ── Read semaphore decrements (SUBU on base+0) ──
-      handleSemaphoreOp(dut.clock, readSem0, expectedParam = 5, expectedAddr = Some(1))
-      handleSemaphoreOp(dut.clock, readSem1, expectedParam = 5, expectedAddr = Some(2))
+      // ── Read semaphore decrements (ADD(negative) on base+0) ──
+      handleSemaphoreOp(dut.clock, readSem0, expectedParam = 4, expectedAddr = Some(1))
+      handleSemaphoreOp(dut.clock, readSem1, expectedParam = 4, expectedAddr = Some(2))
 
       // ── Read Gets ──
       readPort0.a.ready.poke(true.B)
@@ -479,15 +479,15 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
       sendAccessAckData(dut.clock, readPort0, inputRows, (n_in_bytes))
       sendAccessAckData(dut.clock, readPort1, inputRows, (n_in_bytes))
 
-      // ── Read semaphore releases (consumers: ADDU on base+1) ──
-      handleSemaphoreOp(dut.clock, readSem0, expectedParam = 7, expectedAddr = Some(2))
-      handleSemaphoreOp(dut.clock, readSem1, expectedParam = 7, expectedAddr = Some(3))
+      // ── Read semaphore releases (consumers: ADD(positive) on base+1) ──
+      handleSemaphoreOp(dut.clock, readSem0, expectedParam = 4, expectedAddr = Some(2))
+      handleSemaphoreOp(dut.clock, readSem1, expectedParam = 4, expectedAddr = Some(3))
 
       // ── Write semaphore acquire (producer: AQGREQ on base+1) ──
       handleSemaphoreOp(dut.clock, writeSem, expectedParam = 6, expectedAddr = Some(4))
 
-      // ── Write semaphore decrement (SUBU on base+1) ──
-      handleSemaphoreOp(dut.clock, writeSem, expectedParam = 5, expectedAddr = Some(4))
+      // ── Write semaphore decrement (ADD(negative) on base+1) ──
+      handleSemaphoreOp(dut.clock, writeSem, expectedParam = 4, expectedAddr = Some(4))
 
       // ── Write PutFullData ──
       writePort.a.ready.poke(true.B)
@@ -512,8 +512,8 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
       // ── Write ack ──
       sendAccessAck(dut.clock, writePort)
 
-      // ── Write semaphore release (producer: ADDU on base+0) ──
-      handleSemaphoreOp(dut.clock, writeSem, expectedParam = 7, expectedAddr = Some(3))
+      // ── Write semaphore release (producer: ADD(positive) on base+0) ──
+      handleSemaphoreOp(dut.clock, writeSem, expectedParam = 4, expectedAddr = Some(3))
     }
   }
 
@@ -557,9 +557,9 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
         handleSemaphoreOp(dut.clock, readSem0, expectedParam = 6, expectedAddr = Some(1))
         handleSemaphoreOp(dut.clock, readSem1, expectedParam = 6, expectedAddr = Some(2))
 
-        // Semaphore decrements (SUBU on base+0)
-        handleSemaphoreOp(dut.clock, readSem0, expectedParam = 5, expectedAddr = Some(1))
-        handleSemaphoreOp(dut.clock, readSem1, expectedParam = 5, expectedAddr = Some(2))
+        // Semaphore decrements (ADD(negative) on base+0)
+        handleSemaphoreOp(dut.clock, readSem0, expectedParam = 4, expectedAddr = Some(1))
+        handleSemaphoreOp(dut.clock, readSem1, expectedParam = 4, expectedAddr = Some(2))
 
         // Wait for Gets with correct addresses
         readPort0.a.ready.poke(true.B)
@@ -586,9 +586,9 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
         sendAccessAckData(dut.clock, readPort0, chunkRows, stepSize_in_bytes)
         sendAccessAckData(dut.clock, readPort1, chunkRows, stepSize_in_bytes)
 
-        // Semaphore releases (consumers: ADDU on base+1)
-        handleSemaphoreOp(dut.clock, readSem0, expectedParam = 7, expectedAddr = Some(2))
-        handleSemaphoreOp(dut.clock, readSem1, expectedParam = 7, expectedAddr = Some(3))
+        // Semaphore releases (consumers: ADD(positive) on base+1)
+        handleSemaphoreOp(dut.clock, readSem0, expectedParam = 4, expectedAddr = Some(2))
+        handleSemaphoreOp(dut.clock, readSem1, expectedParam = 4, expectedAddr = Some(3))
 
         print(s"chunk ${chunk} completed \n")
       }

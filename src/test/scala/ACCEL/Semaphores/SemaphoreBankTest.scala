@@ -60,7 +60,7 @@ class SemaphoreBankTest extends AnyFreeSpec with Matchers with ChiselSim {
     port.a.bits.opcode.poke(TilelinkOpcodes.ArithmeticData)
     port.a.bits.param.poke(req.param)
     port.a.bits.address.poke(req.address.U)
-    port.a.bits.data.poke(req.data.U)
+    port.a.bits.data.poke((req.data & 0xFFFF).U)
     port.a.bits.source.poke(req.source.U)
     port.a.bits.size.poke(0.U)
     port.a.bits.mask.poke(0.U)
@@ -114,7 +114,7 @@ class SemaphoreBankTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       // Write full reg via port 0
       sendAndReceive(dut, masterIdx = 0,
-        TLReq(param = ArithmeticDataParam.ADDU, address = semAddr(2, 0, 0), data = 7))
+        TLReq(param = ArithmeticDataParam.ADD, address = semAddr(2, 0, 0), data = 7))
 
       // Read full reg via port 1 — should see the value written through port 0
       val result = sendAndReceive(dut, masterIdx = 1,
@@ -151,19 +151,19 @@ class SemaphoreBankTest extends AnyFreeSpec with Matchers with ChiselSim {
       programSemaphore(dut, semIdx = 0, full = 0, empty = bufferSize)
 
       // Producer (master 0, port 0 of semaphore 0):
-      //   AQGREQ(empty >= 1) → SUBU(empty, 1) → ADDU(full, 1)
+      //   AQGREQ(empty >= 1) → ADD(empty, -1) → ADD(full, 1)
       // Consumer (master 1, port 1 of semaphore 0):
-      //   AQGREQ(full >= 1)  → SUBU(full, 1)  → ADDU(empty, 1)
+      //   AQGREQ(full >= 1)  → ADD(full, -1)  → ADD(empty, 1)
       // Both ports alias the same registers — the semaphore handles arbitration internally.
       val prodOps = Seq(
-        TLReq(param = ArithmeticDataParam.AQGREQ, address = semAddr(0, 0, 1), data = 1),
-        TLReq(param = ArithmeticDataParam.SUBU,   address = semAddr(0, 0, 1), data = 1),
-        TLReq(param = ArithmeticDataParam.ADDU,   address = semAddr(0, 0, 0), data = 1)
+        TLReq(param = ArithmeticDataParam.AQGREQ, address = semAddr(0, 0, 1), data =  1),
+        TLReq(param = ArithmeticDataParam.ADD,    address = semAddr(0, 0, 1), data = -1),
+        TLReq(param = ArithmeticDataParam.ADD,    address = semAddr(0, 0, 0), data =  1)
       )
       val consOps = Seq(
-        TLReq(param = ArithmeticDataParam.AQGREQ, address = semAddr(0, 1, 0), data = 1),
-        TLReq(param = ArithmeticDataParam.SUBU,   address = semAddr(0, 1, 0), data = 1),
-        TLReq(param = ArithmeticDataParam.ADDU,   address = semAddr(0, 1, 1), data = 1)
+        TLReq(param = ArithmeticDataParam.AQGREQ, address = semAddr(0, 1, 0), data =  1),
+        TLReq(param = ArithmeticDataParam.ADD,    address = semAddr(0, 1, 0), data = -1),
+        TLReq(param = ArithmeticDataParam.ADD,    address = semAddr(0, 1, 1), data =  1)
       )
 
       var prodUnits = 0; var consUnits = 0
@@ -187,7 +187,7 @@ class SemaphoreBankTest extends AnyFreeSpec with Matchers with ChiselSim {
             dut.io.inPorts(0).a.bits.opcode.poke(TilelinkOpcodes.ArithmeticData)
             dut.io.inPorts(0).a.bits.param.poke(req.param)
             dut.io.inPorts(0).a.bits.address.poke(req.address.U)
-            dut.io.inPorts(0).a.bits.data.poke(req.data.U)
+            dut.io.inPorts(0).a.bits.data.poke((req.data & 0xFFFF).U)
             dut.io.inPorts(0).a.bits.source.poke(0.U)
             dut.io.inPorts(0).a.bits.size.poke(0.U)
             dut.io.inPorts(0).a.bits.mask.poke(0.U)
@@ -209,7 +209,7 @@ class SemaphoreBankTest extends AnyFreeSpec with Matchers with ChiselSim {
             dut.io.inPorts(1).a.bits.opcode.poke(TilelinkOpcodes.ArithmeticData)
             dut.io.inPorts(1).a.bits.param.poke(req.param)
             dut.io.inPorts(1).a.bits.address.poke(req.address.U)
-            dut.io.inPorts(1).a.bits.data.poke(req.data.U)
+            dut.io.inPorts(1).a.bits.data.poke((req.data & 0xFFFF).U)
             dut.io.inPorts(1).a.bits.source.poke(0.U)
             dut.io.inPorts(1).a.bits.size.poke(0.U)
             dut.io.inPorts(1).a.bits.mask.poke(0.U)

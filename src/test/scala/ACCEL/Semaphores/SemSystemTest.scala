@@ -48,7 +48,7 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
     port.a.bits.opcode.poke(TilelinkOpcodes.ArithmeticData)
     port.a.bits.param.poke(req.param)
     port.a.bits.address.poke(req.address.U)
-    port.a.bits.data.poke(req.data.U)
+    port.a.bits.data.poke((req.data & 0xFFFF).U)
     port.a.bits.source.poke(req.source.U)
     port.a.bits.size.poke(0.U)
     port.a.bits.mask.poke(0.U)
@@ -210,12 +210,12 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
       assert(empty0 == 1, s"Expected gen0 empty=1 from first program, got $empty0")
 
       val ops = Seq(
-        TLReq(param = ArithmeticDataParam.AQGREQ, address = tlAddr(semIdxTarget, 0, 1, gen0), data = 1),
-        TLReq(param = ArithmeticDataParam.SUBU,   address = tlAddr(semIdxTarget, 0, 1, gen0), data = 1),
-        TLReq(param = ArithmeticDataParam.ADDU,   address = tlAddr(semIdxTarget, 0, 0, gen0), data = 1),
-        TLReq(param = ArithmeticDataParam.AQGREQ, address = tlAddr(semIdxTarget, 1, 0, gen0), data = 1),
-        TLReq(param = ArithmeticDataParam.SUBU,   address = tlAddr(semIdxTarget, 1, 0, gen0), data = 1),
-        TLReq(param = ArithmeticDataParam.ADDU,   address = tlAddr(semIdxTarget, 1, 1, gen0), data = 1),
+        TLReq(param = ArithmeticDataParam.AQGREQ, address = tlAddr(semIdxTarget, 0, 1, gen0), data =  1),
+        TLReq(param = ArithmeticDataParam.ADD,    address = tlAddr(semIdxTarget, 0, 1, gen0), data = -1),
+        TLReq(param = ArithmeticDataParam.ADD,    address = tlAddr(semIdxTarget, 0, 0, gen0), data =  1),
+        TLReq(param = ArithmeticDataParam.AQGREQ, address = tlAddr(semIdxTarget, 1, 0, gen0), data =  1),
+        TLReq(param = ArithmeticDataParam.ADD,    address = tlAddr(semIdxTarget, 1, 0, gen0), data = -1),
+        TLReq(param = ArithmeticDataParam.ADD,    address = tlAddr(semIdxTarget, 1, 1, gen0), data =  1),
       )
       ops.foreach(op => sendAndReceive(dut, masterIdx = 0, op))
 
@@ -294,7 +294,7 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       // Decrement full by 1
       sendAndReceive(dut, masterIdx = 0,
-        TLReq(param = ArithmeticDataParam.SUBU, address = semAddr(1, 0, 0), data = 1))
+        TLReq(param = ArithmeticDataParam.ADD, address = semAddr(1, 0, 0), data = -1))
 
       // Read full again: should be 2
       val r1 = sendAndReceive(dut, masterIdx = 0,
@@ -303,7 +303,7 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       // Increment empty by 1
       sendAndReceive(dut, masterIdx = 0,
-        TLReq(param = ArithmeticDataParam.ADDU, address = semAddr(1, 0, 1), data = 1))
+        TLReq(param = ArithmeticDataParam.ADD, address = semAddr(1, 0, 1), data = 1))
 
       // Read empty: should be 1
       val r2 = sendAndReceive(dut, masterIdx = 0,

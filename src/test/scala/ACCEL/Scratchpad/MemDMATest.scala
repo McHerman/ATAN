@@ -220,7 +220,7 @@ class MemDMATest extends AnyFreeSpec with Matchers with ChiselSim {
     }
   }
 
-  "MemDMA should pass ADDU semaphore requests through both pipeline ports after transfer" in {
+  "MemDMA should pass ADD semaphore requests through both pipeline ports after transfer" in {
     simulate(new MemDMA()) { dut =>
       //pokeMemPortsIdle(dut)
       //pokeSemPortsIdle(dut)
@@ -278,12 +278,12 @@ class MemDMATest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.semaphoreA.d.valid.poke(false.B)
       dut.io.semaphoreB.d.valid.poke(false.B)
 
-      // Complete both decrements (SUBU)
-      waitFor(dut)(dut.io.semaphoreA.a.valid.peek().litToBoolean, "semaphoreA SUBU")
-      dut.io.semaphoreA.a.bits.param.expect(ArithmeticDataParam.SUBU)
+      // Complete both decrements (ADD negative)
+      waitFor(dut)(dut.io.semaphoreA.a.valid.peek().litToBoolean, "semaphoreA ADD decrement")
+      dut.io.semaphoreA.a.bits.param.expect(ArithmeticDataParam.ADD)
       dut.io.semaphoreA.a.ready.poke(true.B)
-      waitFor(dut)(dut.io.semaphoreB.a.valid.peek().litToBoolean, "semaphoreB SUBU")
-      dut.io.semaphoreB.a.bits.param.expect(ArithmeticDataParam.SUBU)
+      waitFor(dut)(dut.io.semaphoreB.a.valid.peek().litToBoolean, "semaphoreB ADD decrement")
+      dut.io.semaphoreB.a.bits.param.expect(ArithmeticDataParam.ADD)
       dut.io.semaphoreB.a.ready.poke(true.B)
       dut.clock.step()
       dut.io.semaphoreA.a.ready.poke(false.B)
@@ -319,14 +319,14 @@ class MemDMATest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.clock.step()
       dut.io.portB.d.valid.poke(false.B)
 
-      // Pipeline A (consumer): ADDU on base+1 (emptyReg)
-      waitFor(dut)(dut.io.semaphoreA.a.valid.peek().litToBoolean, "semaphoreA ADDU")
-      dut.io.semaphoreA.a.bits.param.expect(ArithmeticDataParam.ADDU)
+      // Pipeline A (consumer): ADD(positive) on base+1 (emptyReg)
+      waitFor(dut)(dut.io.semaphoreA.a.valid.peek().litToBoolean, "semaphoreA ADD release")
+      dut.io.semaphoreA.a.bits.param.expect(ArithmeticDataParam.ADD)
       dut.io.semaphoreA.a.bits.address.expect(0x11.U)
 
-      // Pipeline B (producer): ADDU on base+0 (fullReg)
-      waitFor(dut)(dut.io.semaphoreB.a.valid.peek().litToBoolean, "semaphoreB ADDU")
-      dut.io.semaphoreB.a.bits.param.expect(ArithmeticDataParam.ADDU)
+      // Pipeline B (producer): ADD(positive) on base+0 (fullReg)
+      waitFor(dut)(dut.io.semaphoreB.a.valid.peek().litToBoolean, "semaphoreB ADD release")
+      dut.io.semaphoreB.a.bits.param.expect(ArithmeticDataParam.ADD)
       dut.io.semaphoreB.a.bits.address.expect(0x20.U)
     }
   }
