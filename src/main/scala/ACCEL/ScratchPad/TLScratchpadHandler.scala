@@ -59,11 +59,11 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
 
   switch(state) {
     is(sIdle) {
+      if (config.write) { io.tl.a.ready := io.wMem.get.ready }
+      if (config.read)  { io.tl.a.ready := true.B }
       switch(io.tl.a.bits.opcode) {
         is(TilelinkOpcodes.Get) {
-          assert(config.read.B)
           if (config.read) {
-            io.tl.a.ready := true.B
             when(io.tl.a.fire) {
               reg     := io.tl.a.bits
               beatCnt := io.tl.a.bits.size - c.dataBusSize.U
@@ -72,10 +72,8 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
           }
         }
         is(TilelinkOpcodes.PutFullData, TilelinkOpcodes.PutPartialData) {
-          assert(config.write.B)
           if (config.write) {
             val writeIF = io.wMem.get
-            io.tl.a.ready               := writeIF.ready
             writeIF.valid                := io.tl.a.valid
             writeIF.bits.addr            := io.tl.a.bits.address
             writeIF.bits.data.writeData  := io.tl.a.bits.data.asTypeOf(Vec(c.dataBusSize, UInt(8.W)))
@@ -93,9 +91,7 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
           }
         }
         is(TilelinkOpcodes.ArithmeticData, TilelinkOpcodes.LogicalData) {
-          assert(config.atomic.B)
           if (config.atomic) {
-            io.tl.a.ready := true.B
             when(io.tl.a.fire) {
               reg     := io.tl.a.bits
               beatCnt := io.tl.a.bits.size - c.dataBusSize.U

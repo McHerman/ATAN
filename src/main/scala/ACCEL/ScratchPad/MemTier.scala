@@ -44,9 +44,10 @@ class MemTier(tier: TierConfig, nDMAPorts: Int)(implicit mc: MemSystemConfig)
     case (src, dst) => dst <> src
   }
 
-  val writeHandler = Module(new TilelinkWriteHandler)
+  //val writeHandler = Module(new TilelinkWriteHandler)
+  val writeHandler = Module(new TLScratchpadHandler(TLScratchConfig(read = false, write = true, atomic = false)))
   writeHandler.io.tl <> writeArb.io.outPort
-  scratchpad.io.Writeport(0) <> writeHandler.io.mem
+  scratchpad.io.Writeport(0) <> writeHandler.io.wMem.get
 
   // ── Read path: all read sources → arbiter → handler → scratchpad ─────────
   val nReadSources = tier.nReadPorts + nRW
@@ -56,9 +57,10 @@ class MemTier(tier: TierConfig, nDMAPorts: Int)(implicit mc: MemSystemConfig)
     case (src, dst) => dst <> src
   }
 
-  val readHandler = Module(new TilelinkReadHandler)
+  //val readHandler = Module(new TilelinkReadHandler)
+  val readHandler = Module(new TLScratchpadHandler(TLScratchConfig(read = true, write = false, atomic = false)))
   readHandler.io.tl <> readArb.io.outPort
-  scratchpad.io.Readport(0) <> readHandler.io.mem
+  scratchpad.io.Readport(0) <> readHandler.io.rMem.get
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
