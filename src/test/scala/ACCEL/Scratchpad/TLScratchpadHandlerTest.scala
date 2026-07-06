@@ -21,11 +21,13 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "single-beat PutFullData" in {
     simulate(new TLScratchpadHandler(TLScratchConfig(read = true, write = true, atomic = true))) { dut =>
+      /*
       dut.io.tl.a.valid.poke(false.B)
       dut.io.tl.d.ready.poke(false.B)
       dut.io.wMem.get.ready.poke(false.B)
       dut.io.rMem.get.request.ready.poke(false.B)
       dut.io.rMem.get.response.valid.poke(false.B)
+      */
 
       dut.io.tl.a.bits.opcode.poke(TilelinkOpcodes.PutFullData)
       dut.io.tl.a.bits.param.poke(0.U)
@@ -38,7 +40,9 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.tl.a.valid.poke(true.B)
       dut.io.wMem.get.ready.poke(true.B)
 
-      dut.io.tl.a.ready.expect(true.B)
+      dut.clock.step()
+
+      dut.io.tl.a.ready.expect(false.B)
       dut.io.wMem.get.valid.expect(true.B)
       dut.io.wMem.get.bits.addr.expect(0x0010.U)
 
@@ -57,11 +61,13 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "multi-beat PutFullData write burst" in {
     simulate(new TLScratchpadHandler(TLScratchConfig(read = true, write = true, atomic = true))) { dut =>
+      /*
       dut.io.tl.a.valid.poke(false.B)
       dut.io.tl.d.ready.poke(false.B)
       dut.io.wMem.get.ready.poke(false.B)
       dut.io.rMem.get.request.ready.poke(false.B)
       dut.io.rMem.get.response.valid.poke(false.B)
+      */
 
       dut.io.tl.a.bits.opcode.poke(TilelinkOpcodes.PutFullData)
       dut.io.tl.a.bits.param.poke(0.U)
@@ -74,6 +80,8 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.tl.a.valid.poke(true.B)
       dut.io.wMem.get.ready.poke(true.B)
 
+      dut.clock.step()
+
       dut.io.tl.a.ready.expect(true.B)
       dut.io.wMem.get.valid.expect(true.B)
       dut.io.wMem.get.bits.addr.expect(0x0020.U)
@@ -83,7 +91,7 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
       // sWriteLock: beat 1 with addrReg=0x0021
       dut.io.tl.a.bits.data.poke(BigInt("BBBBBBBBBBBBBBBB", 16).U)
 
-      dut.io.tl.a.ready.expect(true.B)
+      dut.io.tl.a.ready.expect(false.B)
       dut.io.wMem.get.valid.expect(true.B)
       dut.io.wMem.get.bits.addr.expect(0x0021.U)
 

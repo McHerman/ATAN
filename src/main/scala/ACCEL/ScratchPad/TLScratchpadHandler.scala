@@ -15,7 +15,7 @@ case class TLScratchConfig(
 
 
 object State extends ChiselEnum {
-  val sIdle, sWriteLock, sWriteAck, sReadLock, amoLock, amoRead, amoOp, amoWrite, amoReturn = Value
+  val sIdle, sWriteLock, sWriteReturn, sWriteAck, sReadLock, amoLock, amoRead, amoOp, amoWrite, amoReturn = Value
 }
 
 import State._
@@ -41,26 +41,15 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
   val beatCnt      = Reg(UInt(24.W))
   val firstBeat    = RegInit(false.B)
   val reg          = Reg(new TilelinkA())
+  val regValid     = RegInit(false.B)
   val originalData = Reg(UInt((c.dataBusSize * 8).W))
   val amoResult    = Reg(UInt((c.dataBusSize * 8).W))
 
-  when(firstBeat) {
-    io.tl.d.valid        := true.B
-    io.tl.d.bits.opcode  := TilelinkOpcodes.AccessAck
-    io.tl.d.bits.param   := 0.U
-    io.tl.d.bits.size    := reg.size
-    io.tl.d.bits.source  := 0.U
-    io.tl.d.bits.sink    := 0.U
-    io.tl.d.bits.denied  := 0.U
-    io.tl.d.bits.data    := 0.U
-    io.tl.d.bits.corrupt := 0.U
-    when(io.tl.d.fire) { firstBeat := false.B }
-  }
-
   switch(state) {
     is(sIdle) {
-      if (config.write) { io.tl.a.ready := io.wMem.get.ready }
-      if (config.read)  { io.tl.a.ready := true.B }
+
+      io.tl.a.ready := true.B 
+
       switch(io.tl.a.bits.opcode) {
         is(TilelinkOpcodes.Get) {
           if (config.read) {
@@ -73,20 +62,12 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
         }
         is(TilelinkOpcodes.PutFullData, TilelinkOpcodes.PutPartialData) {
           if (config.write) {
-            val writeIF = io.wMem.get
-            writeIF.valid                := io.tl.a.valid
-            writeIF.bits.addr            := io.tl.a.bits.address
-            writeIF.bits.data.writeData  := io.tl.a.bits.data.asTypeOf(Vec(c.dataBusSize, UInt(8.W)))
-            writeIF.bits.data.strb       := VecInit(io.tl.a.bits.mask.asBools)
             when(io.tl.a.fire) {
               reg := io.tl.a.bits
-              when(io.tl.a.bits.size > c.dataBusSize.U) {
-                reg.address := io.tl.a.bits.address + 1.U
-                beatCnt     := io.tl.a.bits.size - (2 * c.dataBusSize).U
-                state       := sWriteLock
-              }.otherwise {
-                firstBeat := true.B
-              }
+              regValid := io.tl.a.valid 
+              beatCnt := io.tl.a.bits.size
+
+              state := sWriteLock
             }
           }
         }
@@ -107,19 +88,41 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
     val writeIF = io.wMem.get
     switch(state) {
       is(sWriteLock) {
-        io.tl.a.ready               := writeIF.ready
-        writeIF.valid                := io.tl.a.valid
-        writeIF.bits.addr            := reg.address
-        writeIF.bits.data.writeData  := io.tl.a.bits.data.asTypeOf(Vec(c.dataBusSize, UInt(8.W)))
-        writeIF.bits.data.strb       := VecInit(io.tl.a.bits.mask.asBools)
+        io.tl.a.ready := writeIF.ready && beatCnt > c.dataBusSize.U
+
+        writeIF.valid := regValid
+        writeIF.bits.addr := reg.address
+
+        writeIF.bits.data.writeData := reg.data.asTypeOf(Vec(c.dataBusSize, UInt(8.W)))
+        writeIF.bits.data.strb      := VecInit(reg.mask.asBools)
+
+        regValid := io.tl.a.fire
+
+        when(beatCnt > c.dataBusSize.U && writeIF.fire) {
+          beatCnt := beatCnt - c.dataBusSize.U
+        }.otherwise {
+          state := sWriteReturn 
+        }
+
         when(io.tl.a.fire) {
+          reg.data := io.tl.a.bits.data
+          reg.mask := io.tl.a.bits.mask
           reg.address := reg.address + 1.U
-          when(beatCnt === 0.U) {
-            firstBeat := true.B
-            state     := sIdle
-          }.otherwise {
-            beatCnt := beatCnt - c.dataBusSize.U
-          }
+        }
+      }
+      is(sWriteReturn) {
+        io.tl.d.valid        := true.B
+        io.tl.d.bits.opcode  := TilelinkOpcodes.AccessAck
+        io.tl.d.bits.param   := 0.U
+        io.tl.d.bits.size    := reg.size
+        io.tl.d.bits.source  := 0.U
+        io.tl.d.bits.sink    := 0.U
+        io.tl.d.bits.denied  := 0.U
+        io.tl.d.bits.data    := 0.U
+        io.tl.d.bits.corrupt := 0.U
+
+        when(io.tl.d.fire) {
+          state := sIdle 
         }
       }
     }
