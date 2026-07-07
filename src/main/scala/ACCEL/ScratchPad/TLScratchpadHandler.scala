@@ -270,7 +270,9 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
         io.tl.d.bits.source  := reg.source
         io.tl.d.bits.sink    := 0.U
         io.tl.d.bits.denied  := 0.U
-        io.tl.d.bits.data    := originalData
+        val byteOff = reg.address(log2Ceil(c.dataBusSize) - 1, 0)
+        val shifted = (originalData >> Cat(byteOff, 0.U(3.W)))(c.dataBusSize * 8 - 1, 0)
+        io.tl.d.bits.data    := Mux(reg.size < c.dataBusSize.U, shifted, originalData)
         io.tl.d.bits.corrupt := 0.U
         when(io.tl.d.fire) {
           when(beatCnt === 0.U) {

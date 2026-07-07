@@ -30,37 +30,51 @@ class MemTier(tier: TierConfig, nRwPorts: Int)(implicit mc: MemSystemConfig)
   val scratchpad = Module(new MemTierScratchpad(tier.nBanks, tier.bankDepth, 1, 1))
 
   // ── Split each RW port by opcode ─────────────────────────────────────────
-  val nRW = nRwPorts + 1
-  val splitters = Seq.fill(nRW)(Module(new TLSplitter))
-
-  io.rwPorts.zipWithIndex.foreach { case (p, i) => splitters(i).io.in <> p }
-  splitters(nRwPorts).io.in <> io.hostIn
+  val rwSplitters  = Seq.fill(nRwPorts)(Module(new TLSplitter))
+  val hostSplitter = Module(new TLSplitter(atomic = tier.atomic))
+  io.rwPorts.zip(rwSplitters).foreach { case (p, s) => s.io.in <> p }
+  hostSplitter.io.in <> io.hostIn
+  val allSplitters = rwSplitters :+ hostSplitter
 
   // ── Write path: all write sources → arbiter → handler → scratchpad ───────
-  val nWriteSources = tier.nWritePorts + nRW
+  val nWriteSources = tier.nWritePorts + allSplitters.size
   val writeArb = Module(new ScratchWriteArbiter(nWriteSources))
-
-  (io.writePorts ++ splitters.map(_.io.write)).zip(writeArb.io.inPorts).foreach {
+  (io.writePorts ++ allSplitters.map(_.io.write)).zip(writeArb.io.inPorts).foreach {
     case (src, dst) => dst <> src
   }
-
-  //val writeHandler = Module(new TilelinkWriteHandler)
   val writeHandler = Module(new TLScratchpadHandler(TLScratchConfig(read = false, write = true, atomic = false)))
   writeHandler.io.tl <> writeArb.io.outPort
-  scratchpad.io.Writeport(0) <> writeHandler.io.wMem.get
 
   // ── Read path: all read sources → arbiter → handler → scratchpad ─────────
-  val nReadSources = tier.nReadPorts + nRW
+  val nReadSources = tier.nReadPorts + allSplitters.size
   val readArb = Module(new ScratchReadArbiter(nReadSources))
-
-  (io.readPorts ++ splitters.map(_.io.read)).zip(readArb.io.inPorts).foreach {
+  (io.readPorts ++ allSplitters.map(_.io.read)).zip(readArb.io.inPorts).foreach {
     case (src, dst) => dst <> src
   }
-
-  //val readHandler = Module(new TilelinkReadHandler)
   val readHandler = Module(new TLScratchpadHandler(TLScratchConfig(read = true, write = false, atomic = false)))
   readHandler.io.tl <> readArb.io.outPort
-  scratchpad.io.Readport(0) <> readHandler.io.rMem.get
+
+  // ── Scratchpad connections (with or without atomic handler) ───────────────
+  if (tier.atomic) {
+    val atomicHandler = Module(new TLScratchpadHandler(
+      TLScratchConfig(read = true, write = true, atomic = true)
+    ))
+    atomicHandler.io.tl              <> hostSplitter.io.amo.get
+    atomicHandler.io.amoReserve.get.ready   := true.B
+    atomicHandler.io.reserveIn.get(0).valid := false.B
+    atomicHandler.io.reserveIn.get(0).bits  := DontCare
+
+    val memArb = Module(new ScratchpadMemArbiter)
+    memArb.io.wPorts(0) <> writeHandler.io.wMem.get
+    memArb.io.wPorts(1) <> atomicHandler.io.wMem.get
+    memArb.io.rPorts(0) <> readHandler.io.rMem.get
+    memArb.io.rPorts(1) <> atomicHandler.io.rMem.get
+    scratchpad.io.Writeport(0) <> memArb.io.wMem
+    scratchpad.io.Readport(0)  <> memArb.io.rMem
+  } else {
+    scratchpad.io.Writeport(0) <> writeHandler.io.wMem.get
+    scratchpad.io.Readport(0)  <> readHandler.io.rMem.get
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -77,27 +91,31 @@ class MemTier(tier: TierConfig, nRwPorts: Int)(implicit mc: MemSystemConfig)
  * the duration of a transaction (multi-beat writes, multi-beat read
  * responses) to prevent interleaving.
  */
-class TLSplitter(implicit c: MemBusConfig) extends Module {
+class TLSplitter(atomic: Boolean = false)(implicit c: MemBusConfig) extends Module {
   val io = IO(new Bundle {
     val in    = Flipped(new TilelinkPort)
     val read  = new TilelinkPort
     val write = new TilelinkPort
+    val amo   = if (atomic) Some(new TilelinkPort) else None
   })
 
   // Defaults — nothing connected
   io.in.a.ready    := false.B
   io.in.d.valid    := false.B
   io.in.d.bits     := DontCare
-
   io.read.a.valid  := false.B
   io.read.a.bits   := DontCare
   io.read.d.ready  := false.B
-
   io.write.a.valid := false.B
   io.write.a.bits  := DontCare
   io.write.d.ready := false.B
+  if (atomic) {
+    io.amo.get.a.valid := false.B
+    io.amo.get.a.bits  := DontCare
+    io.amo.get.d.ready := false.B
+  }
 
-  val sIdle :: sRead :: sWrite :: Nil = Enum(3)
+  val sIdle :: sRead :: sWrite :: sAmo :: Nil = Enum(4)
   val state   = RegInit(sIdle)
   val beatCnt = Reg(UInt(24.W))
 
@@ -107,7 +125,6 @@ class TLSplitter(implicit c: MemBusConfig) extends Module {
       when(io.in.a.valid) {
         switch(io.in.a.bits.opcode) {
           is(TilelinkOpcodes.Get) {
-            // Route to read path
             io.read.a.valid := io.in.a.valid
             io.read.a.bits  := io.in.a.bits
             io.in.a.ready   := io.read.a.ready
@@ -117,7 +134,6 @@ class TLSplitter(implicit c: MemBusConfig) extends Module {
             }
           }
           is(TilelinkOpcodes.PutFullData) {
-            // Route to write path
             io.write.a.valid := io.in.a.valid
             io.write.a.bits  := io.in.a.bits
             io.in.a.ready    := io.write.a.ready
@@ -131,8 +147,18 @@ class TLSplitter(implicit c: MemBusConfig) extends Module {
           is(TilelinkOpcodes.PutPartialData) {
             assert(false.B, "TLSplitter: PutPartialData not supported")
           }
-          is(TilelinkOpcodes.ArithmeticData) {
-            assert(false.B, "TLSplitter: ArithmeticData not supported")
+          is(TilelinkOpcodes.ArithmeticData, TilelinkOpcodes.LogicalData) {
+            if (atomic) {
+              io.amo.get.a.valid := io.in.a.valid
+              io.amo.get.a.bits  := io.in.a.bits
+              io.in.a.ready      := io.amo.get.a.ready
+              when(io.in.a.fire) {
+                beatCnt := io.in.a.bits.size - c.dataBusSize.U
+                state   := sAmo
+              }
+            } else {
+              assert(false.B, "TLSplitter: ArithmeticData not supported")
+            }
           }
         }
       }
@@ -145,34 +171,39 @@ class TLSplitter(implicit c: MemBusConfig) extends Module {
     }
 
     is(sRead) {
-      // Forward D beats back to the input
-      io.in.d.valid    := io.read.d.valid
-      io.in.d.bits     := io.read.d.bits
-      io.read.d.ready  := io.in.d.ready
+      io.in.d.valid   := io.read.d.valid
+      io.in.d.bits    := io.read.d.bits
+      io.read.d.ready := io.in.d.ready
       when(io.in.d.fire) {
         beatCnt := beatCnt - c.dataBusSize.U
-        when(beatCnt === 0.U) {
-          state := sIdle
-        }
+        when(beatCnt === 0.U) { state := sIdle }
       }
     }
 
     is(sWrite) {
-      // Forward remaining A beats to write path
       io.write.a.valid := io.in.a.valid
       io.write.a.bits  := io.in.a.bits
       io.in.a.ready    := io.write.a.ready
       when(io.in.a.fire) {
         beatCnt := beatCnt - c.dataBusSize.U
-        when(beatCnt === 0.U) {
-          state := sIdle
-        }
+        when(beatCnt === 0.U) { state := sIdle }
       }
-      // Forward D ack back
       when(io.write.d.valid) {
         io.in.d.valid    := io.write.d.valid
         io.in.d.bits     := io.write.d.bits
         io.write.d.ready := io.in.d.ready
+      }
+    }
+
+    is(sAmo) {
+      if (atomic) {
+        io.in.d.valid      := io.amo.get.d.valid
+        io.in.d.bits       := io.amo.get.d.bits
+        io.amo.get.d.ready := io.in.d.ready
+        when(io.in.d.fire) {
+          beatCnt := beatCnt - c.dataBusSize.U
+          when(beatCnt === 0.U) { state := sIdle }
+        }
       }
     }
   }

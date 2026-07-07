@@ -4,10 +4,11 @@ import chisel3.util.log2Ceil
 
 /** Per-tier scratchpad sizing. */
 case class TierConfig(
-  nWritePorts: Int,   // external write ports (from compute units / load)
-  nReadPorts:  Int,   // external read ports (to compute units / store)
-  nBanks:      Int,   // number of SRAM banks inside this tier
-  bankDepth:   Int    // words per bank
+  nWritePorts: Int,            // external write ports (from compute units / load)
+  nReadPorts:  Int,            // external read ports (to compute units / store)
+  nBanks:      Int,            // number of SRAM banks inside this tier
+  bankDepth:   Int,            // words per bank
+  atomic:      Boolean = false // enable AMO support on hostIn
 )
 
 /**
