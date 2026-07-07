@@ -20,7 +20,7 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
   }
 
   "single-beat PutFullData" in {
-    simulate(new TLScratchpadHandler(TLScratchConfig(read = true, write = true, atomic = true))) { dut =>
+    simulate(new TLScratchpadHandler(TLScratchConfig(read = false, write = true, atomic = false))) { dut =>
       /*
       dut.io.tl.a.valid.poke(false.B)
       dut.io.tl.d.ready.poke(false.B)
@@ -60,7 +60,7 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
   }
 
   "multi-beat PutFullData write burst" in {
-    simulate(new TLScratchpadHandler(TLScratchConfig(read = true, write = true, atomic = true))) { dut =>
+    simulate(new TLScratchpadHandler(TLScratchConfig(read = false, write = true, atomic = false))) { dut =>
       /*
       dut.io.tl.a.valid.poke(false.B)
       dut.io.tl.d.ready.poke(false.B)
@@ -109,10 +109,10 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
   }
 
   "single-beat Get read" in {
-    simulate(new TLScratchpadHandler(TLScratchConfig(read = true, write = true, atomic = true))) { dut =>
+    simulate(new TLScratchpadHandler(TLScratchConfig(read = true, write = false, atomic = false))) { dut =>
       dut.io.tl.a.valid.poke(false.B)
       dut.io.tl.d.ready.poke(false.B)
-      dut.io.wMem.get.ready.poke(false.B)
+      //dut.io.wMem.get.ready.poke(false.B)
       dut.io.rMem.get.request.ready.poke(false.B)
       dut.io.rMem.get.response.valid.poke(false.B)
 
@@ -153,10 +153,10 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
   }
 
   "multi-beat Get read burst" in {
-    simulate(new TLScratchpadHandler(TLScratchConfig(read = true, write = true, atomic = true))) { dut =>
+    simulate(new TLScratchpadHandler(TLScratchConfig(read = true, write = false, atomic = false))) { dut =>
       dut.io.tl.a.valid.poke(false.B)
       dut.io.tl.d.ready.poke(false.B)
-      dut.io.wMem.get.ready.poke(false.B)
+      //dut.io.wMem.get.ready.poke(false.B)
       dut.io.rMem.get.request.ready.poke(false.B)
       dut.io.rMem.get.response.valid.poke(false.B)
 
@@ -229,6 +229,12 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.clock.step()   // sIdle: a.fire → amoLock, reg captured
 
       dut.io.tl.a.valid.poke(false.B)
+
+      dut.io.amoReserve.get.valid.expect(true.B)
+      dut.io.amoReserve.get.bits.address.expect(0x0050.U)
+
+      dut.io.amoReserve.get.ready.poke(true.B)
+
       dut.clock.step()   // amoLock → amoRead
 
       dut.io.rMem.get.request.valid.expect(true.B)
@@ -289,7 +295,15 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.clock.step()   // sIdle: a.fire → amoLock
 
       dut.io.tl.a.valid.poke(false.B)
+
+      dut.io.amoReserve.get.valid.expect(true.B)
+      dut.io.amoReserve.get.bits.address.expect(0x0060.U)
+
+      dut.io.amoReserve.get.ready.poke(true.B)
+
       dut.clock.step()   // amoLock → amoRead
+
+      dut.io.amoReserve.get.ready.poke(false.B)
 
       dut.io.rMem.get.request.valid.expect(true.B)
       dut.io.rMem.get.request.bits.addr.get.expect(0x0060.U)
@@ -349,7 +363,15 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.clock.step()   // sIdle: a.fire → amoLock, beatCnt=8
 
       dut.io.tl.a.valid.poke(false.B)
+
+      dut.io.amoReserve.get.valid.expect(true.B)
+      dut.io.amoReserve.get.bits.address.expect(0x0070.U)
+
+      dut.io.amoReserve.get.ready.poke(true.B)
+
       dut.clock.step()   // amoLock → amoRead
+
+      dut.io.amoReserve.get.ready.poke(false.B)
 
       // beat 0: addr=0x0070, memVal=100, result=110
       dut.io.rMem.get.request.valid.expect(true.B)
@@ -379,8 +401,17 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.clock.step()   // amoReturn: d.fire, beatCnt>0 → amoLock, addr=0x0071, beatCnt=0
 
       // beat 1: addr=0x0071, memVal=200, result=210
-      dut.io.tl.d.ready.poke(false.B)
+      dut.io.tl.a.valid.poke(false.B)
+
+      dut.io.amoReserve.get.valid.expect(true.B)
+      dut.io.amoReserve.get.bits.address.expect(0x0071.U)
+
+      dut.io.amoReserve.get.ready.poke(true.B)
+
       dut.clock.step()   // amoLock → amoRead
+
+      dut.io.amoReserve.get.ready.poke(false.B)
+
 
       dut.io.rMem.get.request.valid.expect(true.B)
       dut.io.rMem.get.request.bits.addr.get.expect(0x0071.U)

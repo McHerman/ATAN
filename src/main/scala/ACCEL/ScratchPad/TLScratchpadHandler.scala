@@ -8,6 +8,7 @@ case class TLScratchConfig(
   read: Boolean,
   write: Boolean,
   atomic: Boolean,
+  atomicIn: Int = 1,
 ) {
   require(read || write, "Must support at least read or write")
   require((atomic && read && write) || !atomic, "Must support both read and write when using atomic")
@@ -15,8 +16,19 @@ case class TLScratchConfig(
 
 
 object State extends ChiselEnum {
-  val sIdle, sWriteLock, sWriteReturn, sWriteAck, sReadLock, amoLock, amoRead, amoOp, amoWrite, amoReturn = Value
+  val sIdle, sWriteLock, sWriteReturn, sWriteAck, sReadLock, amoLock, amoRead, amoOp, amoWrite, amoRelease, amoReturn = Value
 }
+
+object amoReservationOp {
+  val acquire = 0.U(1.W)
+  val release = 1.U(1.W)
+}
+
+class AtomicReservation(implicit c: MemBusConfig) extends Bundle {
+  val address = UInt(32.W)
+  val opcode = UInt(1.W)
+}
+
 
 import State._
 
@@ -29,6 +41,8 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
         val strb      = Vec(c.dataBusSize, Bool())
       }, 16))) else None
     val rMem = if (config.read) Some(new Readport(Vec(c.dataBusSize, UInt(c.arithDataWidth.W)), Some(16))) else None
+    val amoReserve = if (config.atomic) Some(Decoupled(new AtomicReservation())) else None 
+    val reserveIn  = if (config.atomic) Some(Vec(config.atomicIn, Flipped(Valid(UInt(32.W))))) else None
   })
 
   io.tl.a.ready := false.B
@@ -36,6 +50,10 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
   io.tl.d.bits  := DontCare
   io.wMem.foreach { w => w.valid := false.B; w.bits := DontCare }
   io.rMem.foreach { r => r.request.valid := false.B; r.request.bits := DontCare }
+
+  io.amoReserve.foreach { r => r.valid := false.B; r.bits := DontCare }
+  
+
 
   val state        = RegInit(sIdle)
   val beatCnt      = Reg(UInt(24.W))
@@ -87,10 +105,18 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
   if (config.write) {
     val writeIF = io.wMem.get
     switch(state) {
-      is(sWriteLock) {
+      is(sWriteLock){
+
+
         io.tl.a.ready := writeIF.ready && beatCnt > c.dataBusSize.U
 
-        writeIF.valid := regValid
+        // Check for reservation
+        if(config.atomic){
+          writeIF.valid := regValid && !HelperFunctions.checkAtomic(reg.address, io.reserveIn.get)
+        } else {
+          writeIF.valid := regValid
+        }
+
         writeIF.bits.addr := reg.address
 
         writeIF.bits.data.writeData := reg.data.asTypeOf(Vec(c.dataBusSize, UInt(8.W)))
@@ -153,11 +179,30 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
   }
 
   if (config.atomic) {
-    val readIF  = io.rMem.get
-    val writeIF = io.wMem.get
+    val readIF        = io.rMem.get
+    val writeIF       = io.wMem.get
+    val amoReserve = io.amoReserve.get
+
+    //val amoReserveReg = RegInit(0.U.asTypeOf(new Valid(new AtomicReservation())))
+    //io.amoReserve.get := amoReserveReg
     switch(state) {
       is(amoLock) {
-        state := amoRead
+        /*
+        when(!HelperFunctions.checkAtomic(reg.address, io.reserveIn.get)) {
+          amoReserveReg.valid        := true.B
+          amoReserveReg.bits.address := reg.address
+          state                      := amoRead
+        }
+        */
+
+
+        amoReserve.valid := true.B 
+        amoReserve.bits.address := reg.address
+        amoReserve.bits.opcode := amoReservationOp.acquire
+        
+        when(amoReserve.fire){
+          state := amoRead
+        }
       }
       is(amoRead) {
         readIF.request.valid         := true.B
@@ -207,6 +252,15 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
         writeIF.bits.data.writeData := amoResult.asTypeOf(Vec(c.dataBusSize, UInt(8.W)))
         writeIF.bits.data.strb      := VecInit(Seq.fill(c.dataBusSize)(true.B))
         when(writeIF.fire) { state := amoReturn }
+      }
+      is(amoRelease) {
+        amoReserve.valid := true.B 
+        amoReserve.bits.address := reg.address
+        amoReserve.bits.opcode := amoReservationOp.release
+        
+        when(amoReserve.fire){
+          state := amoReturn
+        }
       }
       is(amoReturn) {
         io.tl.d.valid        := true.B

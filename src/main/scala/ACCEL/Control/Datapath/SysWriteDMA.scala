@@ -7,6 +7,11 @@ object HelperFunctions {
   def uintToBoolVec(uint: UInt, n: Int): Vec[Bool] = {
     VecInit((0 until n).map(i => uint > i.U))
   }
+
+  def checkAtomic(addr: UInt, check: Vec[Valid[UInt]]): Bool = {
+    val block = VecInit(check.map(e => (addr === e.bits) && e.valid))
+    block.reduceTree(_ || _)
+  }
 }
 
 class SysWriteDMA(implicit c: Configuration) extends Module {
