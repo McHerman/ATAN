@@ -133,7 +133,7 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
         when(io.tl.a.fire) {
           reg.data := io.tl.a.bits.data
           reg.mask := io.tl.a.bits.mask
-          reg.address := reg.address + 1.U
+          reg.address := reg.address + c.dataBusSize.U
         }
       }
       is(sWriteReturn) {
@@ -169,7 +169,7 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
         io.tl.d.bits.denied  := 0.U
         io.tl.d.bits.data    := readIF.response.bits.readData.asUInt
         io.tl.d.bits.corrupt := 0.U
-        when(readIF.request.fire) { reg.address := reg.address + 1.U }
+        when(readIF.request.fire) { reg.address := reg.address + c.dataBusSize.U }
         when(io.tl.d.fire) {
           beatCnt := beatCnt - c.dataBusSize.U
           when(beatCnt === 0.U) { state := sIdle }
@@ -276,7 +276,7 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
           when(beatCnt === 0.U) {
             state := sIdle
           }.otherwise {
-            reg.address := reg.address + 1.U
+            reg.address := reg.address + c.dataBusSize.U
             beatCnt     := beatCnt - c.dataBusSize.U
             state       := amoLock
           }

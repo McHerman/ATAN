@@ -64,7 +64,7 @@ class ScratchpadTest extends AnyFreeSpec with Matchers with ChiselSim {
       for (i <- 1 until n) {
         dut.io.WritePorts(0).a.bits.opcode.poke(0.U) // PutFullData
         dut.io.WritePorts(0).a.bits.param.poke(0.U)
-        dut.io.WritePorts(0).a.bits.address.poke(i.U)
+        dut.io.WritePorts(0).a.bits.address.poke((i * c.dataBusSize).U)
         dut.io.WritePorts(0).a.bits.size.poke((n * c.dataBusSize).U)
         dut.io.WritePorts(0).a.bits.source.poke(0.U)
         dut.io.WritePorts(0).a.bits.data.poke(rowToUInt(WMatrix(i)).U)

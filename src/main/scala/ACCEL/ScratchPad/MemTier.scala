@@ -16,13 +16,13 @@ import chisel3.util._
  * [[TilelinkReadHandler]].  The scratchpad sees exactly 1 write port and
  * 1 read port with no additional arbitration.
  */
-class MemTier(tier: TierConfig, nDMAPorts: Int)(implicit mc: MemSystemConfig)
+class MemTier(tier: TierConfig, nRwPorts: Int)(implicit mc: MemSystemConfig)
     extends Module {
 
   val io = IO(new Bundle {
     val writePorts = Vec(tier.nWritePorts, Flipped(new TilelinkPort))
     val readPorts  = Vec(tier.nReadPorts,  Flipped(new TilelinkPort))
-    val dmaPorts   = Vec(nDMAPorts,        Flipped(new TilelinkPort))
+    val rwPorts    = Vec(nRwPorts,        Flipped(new TilelinkPort))
     val hostIn     = Flipped(new TilelinkPort)
   })
 
@@ -30,11 +30,11 @@ class MemTier(tier: TierConfig, nDMAPorts: Int)(implicit mc: MemSystemConfig)
   val scratchpad = Module(new MemTierScratchpad(tier.nBanks, tier.bankDepth, 1, 1))
 
   // ── Split each RW port by opcode ─────────────────────────────────────────
-  val nRW = nDMAPorts + 1
+  val nRW = nRwPorts + 1
   val splitters = Seq.fill(nRW)(Module(new TLSplitter))
 
-  io.dmaPorts.zipWithIndex.foreach { case (p, i) => splitters(i).io.in <> p }
-  splitters(nDMAPorts).io.in <> io.hostIn
+  io.rwPorts.zipWithIndex.foreach { case (p, i) => splitters(i).io.in <> p }
+  splitters(nRwPorts).io.in <> io.hostIn
 
   // ── Write path: all write sources → arbiter → handler → scratchpad ───────
   val nWriteSources = tier.nWritePorts + nRW
@@ -208,8 +208,9 @@ class MemTierScratchpad(
   // Write logic
   io.Writeport.foreach { port =>
     port.ready := true.B
-    val bankIdx  = port.bits.addr(log2Ceil(nBanks) - 1, 0)
-    val bankAddr = port.bits.addr >> log2Ceil(nBanks)
+    val wordAddr = port.bits.addr >> log2Ceil(c.dataBusSize)
+    val bankIdx  = wordAddr(log2Ceil(nBanks) - 1, 0)
+    val bankAddr = wordAddr >> log2Ceil(nBanks)
     memBanks.zipWithIndex.foreach { case (mem, i) =>
       when(port.fire && bankIdx === i.U) {
         mem.write(bankAddr, port.bits.data.writeData.asUInt)
@@ -220,8 +221,9 @@ class MemTierScratchpad(
   // Read logic
   io.Readport.foreach { port =>
     port.request.ready := true.B
-    val bankIdx  = port.request.bits.addr.get(log2Ceil(nBanks) - 1, 0)
-    val bankAddr = port.request.bits.addr.get >> log2Ceil(nBanks)
+    val wordAddr = port.request.bits.addr.get >> log2Ceil(c.dataBusSize)
+    val bankIdx  = wordAddr(log2Ceil(nBanks) - 1, 0)
+    val bankAddr = wordAddr >> log2Ceil(nBanks)
     val readResults = VecInit(memBanks.map(_.read(bankAddr, port.request.fire)))
     val bankIdxReg  = RegNext(bankIdx)
     port.response.bits.readData :=

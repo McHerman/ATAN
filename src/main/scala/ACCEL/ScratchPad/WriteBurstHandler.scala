@@ -33,7 +33,7 @@ class TilelinkWriteHandler(implicit c: MemBusConfig) extends Module {
     when(io.tl.a.fire) {
       when(io.tl.a.bits.size > c.dataBusSize.U) {
         isLocked := true.B
-        addrReg := io.tl.a.bits.address + 1.U
+        addrReg := io.tl.a.bits.address + c.dataBusSize.U
         sizeReg := io.tl.a.bits.size
         beatCnt := io.tl.a.bits.size - (2 * c.dataBusSize).U
       }.otherwise {
@@ -50,7 +50,7 @@ class TilelinkWriteHandler(implicit c: MemBusConfig) extends Module {
     io.mem.bits.data.strb := VecInit(io.tl.a.bits.mask.asBools)
 
     when(io.tl.a.fire) {
-      addrReg := addrReg + 1.U
+      addrReg := addrReg + c.dataBusSize.U
       beatCnt := beatCnt - c.dataBusSize.U
 
       when(beatCnt === 0.U) {

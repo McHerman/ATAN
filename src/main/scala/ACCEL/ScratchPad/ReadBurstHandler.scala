@@ -46,7 +46,7 @@ class TilelinkReadHandler(implicit c: MemBusConfig) extends Module {
     io.tl.d.bits.corrupt := 0.U
 
     when(io.mem.request.fire) {
-      addrReg := addrReg + 1.U
+      addrReg := addrReg + c.dataBusSize.U
     }
     when(io.tl.d.fire) {
       beatCnt := beatCnt - c.dataBusSize.U

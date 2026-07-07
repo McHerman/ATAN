@@ -16,8 +16,9 @@ class Scratchpad(writeports: Int, readports: Int)(implicit c: MemBusConfig) exte
   io.Writeport.foreach { port =>
     port.ready := true.B
 
-    val bankIdx = port.bits.addr(log2Ceil(numOfBanks) - 1, 0)
-    val bankAddr = port.bits.addr >> log2Ceil(numOfBanks)
+    val wordAddr = port.bits.addr >> log2Ceil(c.dataBusSize)
+    val bankIdx = wordAddr(log2Ceil(numOfBanks) - 1, 0)
+    val bankAddr = wordAddr >> log2Ceil(numOfBanks)
 
     memBanks.zipWithIndex.foreach { case (mem, i) =>
       when(port.fire && bankIdx === i.U) {
@@ -30,8 +31,9 @@ class Scratchpad(writeports: Int, readports: Int)(implicit c: MemBusConfig) exte
   io.Readport.foreach { port =>
     port.request.ready := true.B
 
-    val bankIdx = port.request.bits.addr.get(log2Ceil(numOfBanks) - 1, 0)
-    val bankAddr = port.request.bits.addr.get >> log2Ceil(numOfBanks)
+    val wordAddr = port.request.bits.addr.get >> log2Ceil(c.dataBusSize)
+    val bankIdx = wordAddr(log2Ceil(numOfBanks) - 1, 0)
+    val bankAddr = wordAddr >> log2Ceil(numOfBanks)
 
     val readResults = VecInit(memBanks.map(_.read(bankAddr, port.request.fire)))
     val bankIdxReg = RegNext(bankIdx)

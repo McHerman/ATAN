@@ -88,12 +88,12 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       dut.clock.step()
 
-      // sWriteLock: beat 1 with addrReg=0x0021
+      // sWriteLock: beat 1 with addrReg=0x0028
       dut.io.tl.a.bits.data.poke(BigInt("BBBBBBBBBBBBBBBB", 16).U)
 
       dut.io.tl.a.ready.expect(false.B)
       dut.io.wMem.get.valid.expect(true.B)
-      dut.io.wMem.get.bits.addr.expect(0x0021.U)
+      dut.io.wMem.get.bits.addr.expect(0x0028.U)
 
       dut.clock.step()
 
@@ -190,9 +190,9 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       dut.clock.step()
 
-      // beat 1: addr=0x0041
+      // beat 1: addr=0x0048
       dut.io.rMem.get.request.valid.expect(true.B)
-      dut.io.rMem.get.request.bits.addr.get.expect(0x0041.U)
+      dut.io.rMem.get.request.bits.addr.get.expect(0x0048.U)
       for (i <- 0 until c.dataBusSize) {
         dut.io.rMem.get.response.bits.readData(i).poke(0x0B.U)
       }
@@ -398,13 +398,13 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.tl.d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
       dut.io.tl.d.bits.data.expect(100.U)
       dut.io.tl.d.ready.poke(true.B)
-      dut.clock.step()   // amoReturn: d.fire, beatCnt>0 → amoLock, addr=0x0071, beatCnt=0
+      dut.clock.step()   // amoReturn: d.fire, beatCnt>0 → amoLock, addr=0x0078, beatCnt=0
 
-      // beat 1: addr=0x0071, memVal=200, result=210
+      // beat 1: addr=0x0078, memVal=200, result=210
       dut.io.tl.a.valid.poke(false.B)
 
       dut.io.amoReserve.get.valid.expect(true.B)
-      dut.io.amoReserve.get.bits.address.expect(0x0071.U)
+      dut.io.amoReserve.get.bits.address.expect(0x0078.U)
 
       dut.io.amoReserve.get.ready.poke(true.B)
 
@@ -414,7 +414,7 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
 
 
       dut.io.rMem.get.request.valid.expect(true.B)
-      dut.io.rMem.get.request.bits.addr.get.expect(0x0071.U)
+      dut.io.rMem.get.request.bits.addr.get.expect(0x0078.U)
       dut.io.rMem.get.request.ready.poke(true.B)
       dut.clock.step()   // amoRead: request fires → amoOp
 
@@ -426,11 +426,11 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       dut.io.rMem.get.response.valid.poke(false.B)
       dut.io.wMem.get.valid.expect(true.B)
-      dut.io.wMem.get.bits.addr.expect(0x0071.U)
+      dut.io.wMem.get.bits.addr.expect(0x0078.U)
       dut.io.wMem.get.bits.data.writeData(0).expect(210.U)
       for (i <- 1 until c.dataBusSize) { dut.io.wMem.get.bits.data.writeData(i).expect(0.U) }
       dut.io.wMem.get.ready.poke(true.B)
-      dut.clock.step()   // amoWrite: fire → amoReturn
+      dut.clock.step()   // amoWrite: fire → amoReturn (addr=0x0078)
 
       dut.io.wMem.get.ready.poke(false.B)
       dut.io.tl.d.valid.expect(true.B)

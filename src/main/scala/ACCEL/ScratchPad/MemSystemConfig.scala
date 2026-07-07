@@ -29,9 +29,9 @@ case class MemSystemConfig(
   override def semaphoreGenerationWidth: Int = semGenWidth
   require(tiers.nonEmpty, "MemSystemConfig must have at least one tier")
 
-  /** Size of each tier in words (rounded up to power of 2). */
+  /** Size of each tier in bytes (rounded up to power of 2). */
   val tierSizes: Seq[BigInt] = tiers.map { t =>
-    BigInt(1) << log2Ceil(t.nBanks * t.bankDepth)
+    BigInt(1) << log2Ceil(t.nBanks * t.bankDepth * dataBusSize)
   }
 
   /** Base address of each tier in the host address space.
@@ -47,23 +47,32 @@ case class MemSystemConfig(
     }
     bases.toSeq
   }
+
+  require(
+    tierBases.last + tierSizes.last <= (BigInt(1) << addrWidth),
+    s"addrWidth=$addrWidth bits is too narrow: tier address space needs " +
+    s"${(tierBases.last + tierSizes.last).bitLength} bits"
+  )
 }
 
 object MemSystemConfig {
   /** Sensible three-tier default: small L1 + medium L2 + larger L3, single-lane external access. */
+  // Byte address space with 16-bit addr field: max 64 KB total.
+  // Tier sizes in bytes: t0=8 KB (base 0), t1=16 KB (base 16384), t2=32 KB (base 32768) → end=64 KB.
   def default(): MemSystemConfig = MemSystemConfig(
     tiers = Seq(
       TierConfig(nWritePorts = 2, nReadPorts = 3, nBanks = 1, bankDepth = 1024),
       TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 1, bankDepth = 2048),
-      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 1, bankDepth = 16384)
+      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 1, bankDepth = 4096)
     )
   )
 
+  // t0=2 KB (base 0), t1=2 KB (base 2048), t2=8 KB (base 8192) → end=16 KB.
   def small(): MemSystemConfig = MemSystemConfig(
     tiers = Seq(
       TierConfig(nWritePorts = 2, nReadPorts = 3, nBanks = 1, bankDepth = 256),
-      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 1, bankDepth = 2048),
-      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 1, bankDepth = 16384)
+      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 1, bankDepth = 256),
+      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 1, bankDepth = 1024)
     )
   )
 }

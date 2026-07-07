@@ -100,7 +100,7 @@ class MemSystem(ctrlCfg: Configuration)(implicit mc: MemSystemConfig) extends Mo
     dmas(i).io.semaphoreB <> io.semaphoreB(i)
 
     val portASlot = if (i == 0) 0 else 1
-    dmas(i).io.portA <> tiers(i).io.dmaPorts(portASlot)
-    dmas(i).io.portB <> tiers(i + 1).io.dmaPorts(0)
+    dmas(i).io.portA <> tiers(i).io.rwPorts(portASlot)
+    dmas(i).io.portB <> tiers(i + 1).io.rwPorts(0)
   }
 }

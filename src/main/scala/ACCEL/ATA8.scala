@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.experimental._
 import chisel3.util._
 
-class ATA8(config: Configuration) extends Module {
+class ATA8(config: Configuration, memCfgBase: MemSystemConfig = MemSystemConfig.default()) extends Module {
   implicit val c: Configuration = config
 
   val io = IO(new Bundle {
@@ -19,7 +19,7 @@ class ATA8(config: Configuration) extends Module {
     //val dbgStoreState = Output(UInt(4.W))
   })
 
-  implicit lazy val mc: MemSystemConfig = MemSystemConfig.default().copy(
+  implicit lazy val mc: MemSystemConfig = memCfgBase.copy(
     sourceWidth = c.sourceWidth,
     semGenWidth = c.semaphoreGenerationWidth,
   )

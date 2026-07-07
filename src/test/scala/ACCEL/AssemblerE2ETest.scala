@@ -635,7 +635,7 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     //  parsed.outputs.map(t => (t.shape, t.data))
 
     // Phase 3: Simulate hardware
-    simulate(new ATA8(testConfig)) { dut =>
+    simulate(new ATA8(testConfig, MemSystemConfig.small())) { dut =>
       totalCycles = 0L
 
       // Preload memory for each preload entry
@@ -676,7 +676,7 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
         }
       }
     }
-  }   
+  }
 
 
   "End-to-end broadcast" in {
@@ -739,7 +739,7 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     //  parsed.outputs.map(t => (t.shape, t.data))
 
     // Phase 3: Simulate hardware
-    simulate(new ATA8(testConfig)) { dut =>
+    simulate(new ATA8(testConfig, MemSystemConfig.small())) { dut =>
       totalCycles = 0L
 
       // Preload memory for each preload entry
@@ -780,7 +780,7 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
         }
       }
     }
-  }   
+  }
 
 
   "End-to-end broadcast large" in {
@@ -843,7 +843,7 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     //  parsed.outputs.map(t => (t.shape, t.data))
 
     // Phase 3: Simulate hardware
-    simulate(new ATA8(testConfig)) { dut =>
+    simulate(new ATA8(testConfig, MemSystemConfig.small())) { dut =>
       totalCycles = 0L
 
       // Preload memory for each preload entry
@@ -884,6 +884,6 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
         }
       }
     }
-  }   
+  }
 
 }
