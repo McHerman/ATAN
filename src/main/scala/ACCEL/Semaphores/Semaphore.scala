@@ -116,7 +116,7 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
   val stateregs        = RegInit(VecInit(Seq.fill(2)(idle)))
   val inputregs        = Reg(Vec(2, io.inPorts(0).a.bits.cloneType))
   val decrementApplied = RegInit(VecInit(Seq.fill(2)(false.B)))
-  val newValRegs       = Reg(Vec(2, UInt(16.W)))
+  val oldValRegs       = Reg(Vec(2, UInt(16.W)))
 
   // Explicit write-request wires: req(portIdx)(regIdx), pulled high from within state logic
   val req = Wire(Vec(2, Vec(2, Bool())))
@@ -217,7 +217,7 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
 
           when(grant(idx)(sel)) {
             when(sel === 0.U) { full := newVal }.otherwise { empty := newVal }
-            newValRegs(idx) := newVal
+            oldValRegs(idx) := regs(sel)
             applied         := true.B
           }
         }
@@ -230,7 +230,7 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
         port.d.bits.source := reg.source
         port.d.bits.sink   := DontCare // TODO, find some better use for this
         port.d.bits.denied := false.B
-        port.d.bits.data   := newValRegs(idx)
+        port.d.bits.data   := oldValRegs(idx)
         port.d.bits.corrupt := 0.U
 
         when(port.d.fire){

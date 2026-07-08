@@ -228,7 +228,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
     }
   }
 
-  "ADD with negative data should decrement emptyReg and return the new value" in {
+  "ADD with negative data should decrement emptyReg and return the old value" in {
     implicit val c = Configuration.default()
     simulate(new Semaphore(0)) { dut =>
       defaultPokes(dut)
@@ -268,7 +268,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       port.d.ready.poke(true.B)
 
       port.d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
-      port.d.bits.data.expect(12.U)
+      port.d.bits.data.expect(15.U)
 
       dut.clock.step()
 
@@ -542,12 +542,12 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
         require(cycles < maxCycles, "Timeout waiting for both ports to respond")
         if (!port0Done && dut.io.inPorts(0).d.valid.peek().litToBoolean) {
           dut.io.inPorts(0).d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
-          dut.io.inPorts(0).d.bits.data.expect(40.U)  // 50 - 10
+          dut.io.inPorts(0).d.bits.data.expect(50.U)  // 50 - 10
           port0Done = true
         }
         if (!port1Done && dut.io.inPorts(1).d.valid.peek().litToBoolean) {
           dut.io.inPorts(1).d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
-          dut.io.inPorts(1).d.bits.data.expect(23.U)  // 30 - 7
+          dut.io.inPorts(1).d.bits.data.expect(30.U)  // 30 - 7
           port1Done = true
         }
         if (!port0Done || !port1Done) dut.clock.step()
@@ -670,7 +670,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
 
       port.d.ready.poke(true.B)
       port.d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
-      port.d.bits.data.expect(12.U)  // 5 + 7
+      port.d.bits.data.expect(5.U)  // 5 + 7
 
       dut.clock.step()
       port.d.ready.poke(false.B)
@@ -989,7 +989,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.inPorts(0).d.ready.poke(true.B)
 
       dut.io.inPorts(0).d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
-      dut.io.inPorts(0).d.bits.data.expect(1.U)
+      dut.io.inPorts(0).d.bits.data.expect(0.U)
 
       ////////////////////////////////////////////////// 
 
@@ -1029,7 +1029,7 @@ class SemaphoreTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.inPorts(1).d.ready.poke(true.B)
 
       dut.io.inPorts(1).d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
-      dut.io.inPorts(1).d.bits.data.expect(0.U)
+      dut.io.inPorts(1).d.bits.data.expect(1.U)
 
     }
   }
