@@ -13,7 +13,7 @@ class ATA8(config: Configuration, memCfgBase: MemSystemConfig = MemSystemConfig.
     val AXIST_inInst  = Flipped(new AXIST_2(128, 2, 1, 1, 1))
     val axi_s0        = Flipped(new CustomAXI4Lite(32, 32))
 
-    val hostIn = Flipped(new TilelinkPort()(mc))
+    val hostIn = Flipped(new TilelinkPort(mc.tlBus))
     //val dbgLoadState  = Output(UInt(4.W))
     //val dbgExeState   = Output(UInt(4.W))
     //val dbgStoreState = Output(UInt(4.W))
