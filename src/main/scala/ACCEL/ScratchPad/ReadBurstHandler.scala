@@ -5,7 +5,7 @@ import chisel3.util._
 
 class TilelinkReadHandler(implicit c: MemBusConfig) extends Module {
   val io = IO(new Bundle {
-    val tl = Flipped(new TilelinkPort)
+    val tl = Flipped(new TilelinkPort(c.tlBus))
     val mem = new Readport(Vec(c.dataBusSize, UInt(c.arithDataWidth.W)), Some(16))
   })
 

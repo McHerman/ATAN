@@ -14,7 +14,7 @@ class AtomicIntegrationDUT(implicit c: Configuration) extends Module {
   val bank = Module(new AtomicReservationBank(2))
 
   val io = IO(new Bundle {
-    val tl      = Flipped(new TilelinkPort)
+    val tl      = Flipped(new TilelinkPort(c.tlBus))
     val wMem    = Decoupled(new Writeport(new Bundle {
       val writeData = Vec(c.dataBusSize, UInt(8.W))
       val strb      = Vec(c.dataBusSize, Bool())

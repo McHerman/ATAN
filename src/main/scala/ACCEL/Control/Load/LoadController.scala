@@ -14,8 +14,8 @@ class LoadController(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
     val instructionStream = new Readport(new LoadInst)
     val AXIST             = Flipped(new AXIST_2(64, 2, 1, 1, 1))
-    val writeport         = new TilelinkPort
-    val semaphoreIF       = new TilelinkPort
+    val writeport         = new TilelinkPort(c.tlBus)
+    val semaphoreIF       = new TilelinkPort(c.tlSemBus)
     val debug             = new LoadDebug
   })
 

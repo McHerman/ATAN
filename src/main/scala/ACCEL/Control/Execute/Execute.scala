@@ -8,11 +8,11 @@ class Execute(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
     val instructionStream = Flipped(Decoupled(new ExecuteInst))
 
-    val scratchOut = Vec(c.grainDim, new TilelinkPort)
-    val scratchIn  = Vec(2, new TilelinkPort)
+    val scratchOut = Vec(c.grainDim, new TilelinkPort(c.tlBus))
+    val scratchIn  = Vec(2, new TilelinkPort(c.tlBus))
 
-    val writeSemaphoreIF = Vec(c.grainDim, new TilelinkPort)
-    val readSemaphoreIF  = Vec(2, Vec(c.grainDim, new TilelinkPort))
+    val writeSemaphoreIF = Vec(c.grainDim, new TilelinkPort(c.tlSemBus))
+    val readSemaphoreIF  = Vec(2, Vec(c.grainDim, new TilelinkPort(c.tlSemBus)))
 
     val debug = new ExeDebug
   })

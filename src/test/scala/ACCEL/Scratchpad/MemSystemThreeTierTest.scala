@@ -34,8 +34,8 @@ class ThreeTierDUT(msCfg: MemSystemConfig, bankCfg: Configuration) extends Modul
   }
 
   val io = IO(new Bundle {
-    val tier0Write          = Flipped(new TilelinkPort()(msCfg))
-    val tier0Read           = Flipped(new TilelinkPort()(msCfg))
+    val tier0Write          = Flipped(new TilelinkPort(msCfg.tlBus))
+    val tier0Read           = Flipped(new TilelinkPort(msCfg.tlBus))
     val dmaInstructionStream = Flipped(Decoupled(new DMAInst()(bankCfg)))
     val semProgPort         = Flipped(Decoupled(new SemaphoreProgPort()(bankCfg)))
   })
@@ -68,8 +68,8 @@ class MemSystemDUT(msCfg: MemSystemConfig, bankCfg: Configuration) extends Modul
   }
 
   val io = IO(new Bundle {
-    val tier0Write          = Flipped(new TilelinkPort()(msCfg))
-    val tier0Read           = Flipped(new TilelinkPort()(msCfg))
+    val tier0Write          = Flipped(new TilelinkPort(msCfg.tlBus))
+    val tier0Read           = Flipped(new TilelinkPort(msCfg.tlBus))
     val dmaInstructionStream = Flipped(Decoupled(new DMAInst()(bankCfg)))
     val semInstructionStream = Flipped(Decoupled(new SemProgInst()(bankCfg)))
   })
@@ -99,9 +99,9 @@ class HostInDUT(msCfg: MemSystemConfig, bankCfg: Configuration) extends Module {
   }
 
   val io = IO(new Bundle {
-    val hostIn               = Flipped(new TilelinkPort()(msCfg))
-    val tier0Write           = Flipped(new TilelinkPort()(msCfg))
-    val tier0Read            = Flipped(new TilelinkPort()(msCfg))
+    val hostIn               = Flipped(new TilelinkPort(msCfg.tlBus))
+    val tier0Write           = Flipped(new TilelinkPort(msCfg.tlBus))
+    val tier0Read            = Flipped(new TilelinkPort(msCfg.tlBus))
     val dmaInstructionStream = Flipped(Decoupled(new DMAInst()(bankCfg)))
     val semProgPort          = Flipped(Decoupled(new SemaphoreProgPort()(bankCfg)))
   })
@@ -122,9 +122,9 @@ class MemSystemThreeTierTest extends AnyFreeSpec with Matchers with ChiselSim {
   // need at least log2(40)=6 bits, so 8 is safe.
   val msCfg: MemSystemConfig = MemSystemConfig(
     tiers = Seq(
-      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 4, bankDepth = 256),
-      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 4, bankDepth = 256),
-      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 4, bankDepth = 256)
+      TierConfig(nWritePorts = 1, nReadPorts = 1, bankDepth = 256),
+      TierConfig(nWritePorts = 1, nReadPorts = 1, bankDepth = 256),
+      TierConfig(nWritePorts = 1, nReadPorts = 1, bankDepth = 256)
     ),
     dataBusSize    = 8,
     arithDataWidth = 8,

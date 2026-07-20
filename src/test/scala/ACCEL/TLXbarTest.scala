@@ -26,8 +26,9 @@ class TLXbarTester extends AnyFlatSpec with Matchers with ChiselSim {
       nMasters = 1,
       slaves = Seq(
         TLSlaveConfig(Seq((0x00, 0xFFFF)))
-      )
-    )(c)
+      ),
+      tl = c.tlBus,
+    )
 
     simulate(new TLXbar(xbarConfig)) { dut =>
       // Initialize
@@ -80,8 +81,9 @@ class TLXbarTester extends AnyFlatSpec with Matchers with ChiselSim {
         TLSlaveConfig(Seq((0x0000, 0x00FF))),      // Slave 0: 0x0000-0xFFFF
         TLSlaveConfig(Seq((0x0100, 0x0E00))),     // Slave 1: 0x10000-0x1FFFF
         TLSlaveConfig(Seq((0x1000, 0xE000)))      // Slave 2: 0x20000-0x2FFFF
-      )
-    )(c)
+      ),
+      tl = c.tlBus,
+    )
 
     simulate(new TLXbar(xbarConfig)) { dut =>
       dut.clock.step()
@@ -151,8 +153,9 @@ class TLXbarTester extends AnyFlatSpec with Matchers with ChiselSim {
       slaves = Seq(
         TLSlaveConfig(Seq((0x00, 0xFFFF)))
       ),
-      arbiterPolicy = "lowestIndexFirst"
-    )(c)
+      arbiterPolicy = "lowestIndexFirst",
+      tl = c.tlBus,
+    )
 
     simulate(new TLXbar(xbarConfig)) { dut =>
       dut.clock.step()
@@ -203,8 +206,9 @@ class TLXbarTester extends AnyFlatSpec with Matchers with ChiselSim {
       nMasters = 2,
       slaves = Seq(
         TLSlaveConfig(Seq((0x00, 0xFFFF)))
-      )
-    )(c)
+      ),
+      tl = c.tlBus,
+    )
 
     simulate(new TLXbar(xbarConfig)) { dut =>
       dut.clock.step()
@@ -264,8 +268,9 @@ class TLXbarTester extends AnyFlatSpec with Matchers with ChiselSim {
       nMasters = 1,
       slaves = Seq(
         TLSlaveConfig(Seq((0x0, 0xFFFF)))
-      )
-    )(c)
+      ),
+      tl = c.tlBus,
+    )
 
     simulate(new TLXbar(xbarConfig)) { dut =>
       dut.clock.step()
@@ -302,8 +307,9 @@ class TLXbarTester extends AnyFlatSpec with Matchers with ChiselSim {
       slaves = Seq(
         TLSlaveConfig(Seq((0x0000, 0xFFFF))),
         TLSlaveConfig(Seq((0x10000, 0xFFFF)))
-      )
-    )(c)
+      ),
+      tl = c.tlBus,
+    )
 
     simulate(new TLXbar(xbarConfig)) { dut =>
       dut.clock.step()
@@ -343,8 +349,9 @@ class TLXbarTester extends AnyFlatSpec with Matchers with ChiselSim {
       slaves = Seq(
         TLSlaveConfig(Seq((0x0, 0xFFFF)))
       ),
-      arbiterPolicy = "roundRobin"
-    )(c)
+      arbiterPolicy = "roundRobin",
+      tl = c.tlBus,
+    )
 
     simulate(new TLXbar(xbarConfig)) { dut =>
       dut.clock.step()
@@ -382,8 +389,9 @@ class TLXbarTester extends AnyFlatSpec with Matchers with ChiselSim {
       nMasters = 2,
       slaves = Seq(
         TLSlaveConfig(Seq((0x0, 0xFFFF)))
-      )
-    )(c)
+      ),
+      tl = c.tlBus,
+    )
 
     simulate(new TLXbar(xbarConfig)) { dut =>
       dut.clock.step()
@@ -454,8 +462,9 @@ class TLXbarTester extends AnyFlatSpec with Matchers with ChiselSim {
       slaves = Seq(
         TLSlaveConfig(Seq((0x0, 0xFFFF)))
       ),
-      arbiterPolicy = "lock"
-    )(c)
+      arbiterPolicy = "lock",
+      tl = c.tlBus,
+    )
 
     simulate(new TLXbar(xbarConfig)) { dut =>
       dut.clock.step()
@@ -544,8 +553,9 @@ class TLXbarTester extends AnyFlatSpec with Matchers with ChiselSim {
       slaves = Seq(
         TLSlaveConfig(Seq((0x0, 0xFFFF)))
       ),
-      arbiterPolicy = "lock"
-    )(c)
+      arbiterPolicy = "lock",
+      tl = c.tlBus,
+    )
 
     simulate(new TLXbar(xbarConfig)) { dut =>
       dut.clock.step()
@@ -603,8 +613,9 @@ class TLXbarTester extends AnyFlatSpec with Matchers with ChiselSim {
       slaves = Seq(
         TLSlaveConfig(Seq((0x0, 0xFFFF)))
       ),
-      arbiterPolicy = "lock"
-    )(c)
+      arbiterPolicy = "lock",
+      tl = c.tlBus,
+    )
 
     simulate(new TLXbar(xbarConfig)) { dut =>
       dut.clock.step()
@@ -664,8 +675,9 @@ class TLXbarTester extends AnyFlatSpec with Matchers with ChiselSim {
       slaves = Seq(
         TLSlaveConfig(Seq((0x0, 0xFFFF)))
       ),
-      arbiterPolicy = "lock"
-    )(c)
+      arbiterPolicy = "lock",
+      tl = c.tlBus,
+    )
 
     simulate(new TLXbar(xbarConfig)) { dut =>
       dut.clock.step()
@@ -717,8 +729,9 @@ class TLXbarTester extends AnyFlatSpec with Matchers with ChiselSim {
       slaves = Seq(
         TLSlaveConfig(Seq((0x0, 0xFFFF)))
       ),
-      arbiterPolicy = "lock"
-    )(c)
+      arbiterPolicy = "lock",
+      tl = c.tlBus,
+    )
 
     simulate(new TLXbar(xbarConfig)) { dut =>
       dut.clock.step()
@@ -783,8 +796,9 @@ class TLXbarTester extends AnyFlatSpec with Matchers with ChiselSim {
         TLSlaveConfig(Seq((0x0000, 0xFFFF))),
         TLSlaveConfig(Seq((0x10000, 0xFFFF)))
       ),
-      arbiterPolicy = "lock"
-    )(c)
+      arbiterPolicy = "lock",
+      tl = c.tlBus,
+    )
 
     simulate(new TLXbar(xbarConfig)) { dut =>
       dut.clock.step()

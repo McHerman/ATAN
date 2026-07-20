@@ -31,7 +31,7 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
   val regSelectBit = genWidth // address bit that selects full/empty register: 0 = full, 1 = empty
 
   val io = IO(new Bundle {
-    val inPorts  = Vec(2, Flipped(new TilelinkPort))
+    val inPorts  = Vec(2, Flipped(new TilelinkPort(c.tlSemBus)))
     val progPort = Flipped(Decoupled(new SemaphoreProg(genWidth)))
     val eventPort = Decoupled(new SemaphoreEvent)
   })

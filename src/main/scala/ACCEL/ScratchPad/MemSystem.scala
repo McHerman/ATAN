@@ -19,15 +19,15 @@ class MemSystem(ctrlCfg: Configuration)(implicit mc: MemSystemConfig) extends Mo
     else 2
 
   val io = IO(new Bundle {
-    val tier0WritePorts = Vec(mc.tiers(0).nWritePorts, Flipped(new TilelinkPort))
-    val tier0ReadPorts  = Vec(mc.tiers(0).nReadPorts,  Flipped(new TilelinkPort))
+    val tier0WritePorts = Vec(mc.tiers(0).nWritePorts, Flipped(new TilelinkPort(mc.tlBus)))
+    val tier0ReadPorts  = Vec(mc.tiers(0).nReadPorts,  Flipped(new TilelinkPort(mc.tlBus)))
 
     val dmaInstructionStream = Flipped(Decoupled(new DMAInst()(ctrlCfg)))
 
-    val semaphoreA = Vec(nDMAs, new TilelinkPort)
-    val semaphoreB = Vec(nDMAs, new TilelinkPort)
+    val semaphoreA = Vec(nDMAs, new TilelinkPort(mc.tlSemBus))
+    val semaphoreB = Vec(nDMAs, new TilelinkPort(mc.tlSemBus))
 
-    val hostIn = Flipped(new TilelinkPort)
+    val hostIn = Flipped(new TilelinkPort(mc.tlBus))
   })
 
   // ── Instantiate tiers ─────────────────────────────────────────────────────
@@ -74,7 +74,8 @@ class MemSystem(ctrlCfg: Configuration)(implicit mc: MemSystemConfig) extends Mo
       TLSlaveConfig(
         addressSet = Seq((mc.tierBases(i), mc.tierSizes(i) - 1))
       )
-    }
+    },
+    tl = mc.tlBus,
   )))
 
   hostDemux.io.in(0) <> io.hostIn

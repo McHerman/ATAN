@@ -14,7 +14,7 @@ import chisel3.util._
  */
 class TilelinkRWHandler(implicit c: MemBusConfig) extends Module {
   val io = IO(new Bundle {
-    val tl   = Flipped(new TilelinkPort)
+    val tl   = Flipped(new TilelinkPort(c.tlBus))
     val wMem = Decoupled(new Writeport(
       new Bundle {
         val writeData = Vec(c.dataBusSize, UInt(8.W))

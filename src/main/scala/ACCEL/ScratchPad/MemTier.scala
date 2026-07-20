@@ -20,14 +20,21 @@ class MemTier(tier: TierConfig, nRwPorts: Int)(implicit mc: MemSystemConfig)
     extends Module {
 
   val io = IO(new Bundle {
-    val writePorts = Vec(tier.nWritePorts, Flipped(new TilelinkPort))
-    val readPorts  = Vec(tier.nReadPorts,  Flipped(new TilelinkPort))
-    val rwPorts    = Vec(nRwPorts,        Flipped(new TilelinkPort))
-    val hostIn     = Flipped(new TilelinkPort)
+    val writePorts = Vec(tier.nWritePorts, Flipped(new TilelinkPort(mc.tlBus)))
+    val readPorts  = Vec(tier.nReadPorts,  Flipped(new TilelinkPort(mc.tlBus)))
+    val rwPorts    = Vec(nRwPorts,        Flipped(new TilelinkPort(mc.tlBus)))
+    val hostIn     = Flipped(new TilelinkPort(mc.tlBus))
   })
 
   // ── Scratchpad: 1 write port, 1 read port ────────────────────────────────
-  val scratchpad = Module(new MemTierScratchpad(tier.nBanks, tier.bankDepth, 1, 1))
+
+
+  val spmConfig = SPMConfig(bankDepth = tier.bankDepth,
+                            writeports = 1,
+                            readports = 1)
+
+  val scratchpad = Module(new MemTierScratchpad(spmConfig))
+
 
   // ── Split each RW port by opcode ─────────────────────────────────────────
   val rwSplitters  = Seq.fill(nRwPorts)(Module(new TLSplitter))
@@ -93,10 +100,10 @@ class MemTier(tier: TierConfig, nRwPorts: Int)(implicit mc: MemSystemConfig)
  */
 class TLSplitter(atomic: Boolean = false)(implicit c: MemBusConfig) extends Module {
   val io = IO(new Bundle {
-    val in    = Flipped(new TilelinkPort)
-    val read  = new TilelinkPort
-    val write = new TilelinkPort
-    val amo   = if (atomic) Some(new TilelinkPort) else None
+    val in    = Flipped(new TilelinkPort(c.tlBus))
+    val read  = new TilelinkPort(c.tlBus)
+    val write = new TilelinkPort(c.tlBus)
+    val amo   = if (atomic) Some(new TilelinkPort(c.tlBus)) else None
   })
 
   // Defaults — nothing connected
@@ -216,49 +223,70 @@ class TLSplitter(atomic: Boolean = false)(implicit c: MemBusConfig) extends Modu
 /**
  * Raw SRAM scratchpad with configurable bank count, bank depth, and port
  * counts.  Used exclusively by [[MemTier]].
+ *
+ * `wideBanks`, when set, exposes a `wideBanks`-element 32-bit-wide port
+ * matching [[TLScratchpadHandler]]'s wide mode; `bankDepth` is the row
+ * count.  Left at its default (`None`), this is a narrow byte-bus scratchpad.
  */
-class MemTierScratchpad(
-  nBanks:      Int,
+
+
+case class SPMConfig(
   bankDepth:   Int,
   writeports:  Int,
-  readports:   Int
-)(implicit c: MemBusConfig) extends Module {
+  readports:   Int,
+  wideBanks:   Option[Int] = None,
+)(implicit val c: MemBusConfig)
+
+class MemTierScratchpad(config: SPMConfig)(implicit c: MemBusConfig) extends Module {
+
+  private val portElems = config.wideBanks.getOrElse(c.dataBusSize)
+  private val portWidth = config.wideBanks.map(_ => 32).getOrElse(8)
 
   val io = IO(new Bundle {
-    val Writeport = Vec(writeports, Flipped(Decoupled(new Writeport(
+    val Writeport = Vec(config.writeports, Flipped(Decoupled(new Writeport(
       new Bundle {
-        val writeData = Vec(c.dataBusSize, UInt(8.W))
-        val strb      = Vec(c.dataBusSize, Bool())
+        val writeData = Vec(portElems, UInt(portWidth.W))
+        val strb      = Vec(portElems, Bool())
       }, 16))))
-    val Readport = Vec(readports, Flipped(new Readport(
-      Vec(c.dataBusSize, UInt(c.arithDataWidth.W)), Some(16))))
+    val Readport = Vec(config.readports, Flipped(new Readport(
+      Vec(portElems, UInt(config.wideBanks.map(_ => 32).getOrElse(c.arithDataWidth).W)), Some(16))))
   })
 
-  val memBanks = Seq.fill(nBanks)(SyncReadMem(bankDepth, UInt((c.dataBusSize * 8).W)))
+  config.wideBanks match {
+    case None =>
+      val mem = SyncReadMem(config.bankDepth, UInt((c.dataBusSize * 8).W))
 
-  // Write logic
-  io.Writeport.foreach { port =>
-    port.ready := true.B
-    val wordAddr = port.bits.addr >> log2Ceil(c.dataBusSize)
-    val bankIdx  = wordAddr(log2Ceil(nBanks) - 1, 0)
-    val bankAddr = wordAddr >> log2Ceil(nBanks)
-    memBanks.zipWithIndex.foreach { case (mem, i) =>
-      when(port.fire && bankIdx === i.U) {
-        mem.write(bankAddr, port.bits.data.writeData.asUInt)
+      io.Writeport.foreach { port =>
+        port.ready := true.B
+        val wordAddr = port.bits.addr >> log2Ceil(c.dataBusSize)
+        when(port.fire) {
+          mem.write(wordAddr, port.bits.data.writeData.asUInt)
+        }
       }
-    }
-  }
 
-  // Read logic
-  io.Readport.foreach { port =>
-    port.request.ready := true.B
-    val wordAddr = port.request.bits.addr.get >> log2Ceil(c.dataBusSize)
-    val bankIdx  = wordAddr(log2Ceil(nBanks) - 1, 0)
-    val bankAddr = wordAddr >> log2Ceil(nBanks)
-    val readResults = VecInit(memBanks.map(_.read(bankAddr, port.request.fire)))
-    val bankIdxReg  = RegNext(bankIdx)
-    port.response.bits.readData :=
-      readResults(bankIdxReg).asTypeOf(Vec(c.dataBusSize, UInt(c.arithDataWidth.W)))
-    port.response.valid := RegNext(port.request.fire)
+      io.Readport.foreach { port =>
+        port.request.ready := true.B
+        val wordAddr = port.request.bits.addr.get >> log2Ceil(c.dataBusSize)
+        val readResult = mem.read(wordAddr, port.request.fire)
+        port.response.bits.readData := readResult.asTypeOf(Vec(c.dataBusSize, UInt(c.arithDataWidth.W)))
+        port.response.valid := RegNext(port.request.fire)
+      }
+
+    case Some(n) =>
+      val mem = SyncReadMem(config.bankDepth, Vec(n, UInt(32.W)))
+
+      io.Writeport.foreach { port =>
+        port.ready := true.B
+        when(port.fire) {
+          mem.write(port.bits.addr, port.bits.data.writeData, port.bits.data.strb)
+        }
+      }
+
+      io.Readport.foreach { port =>
+        port.request.ready := true.B
+        val result = mem.read(port.request.bits.addr.get, port.request.fire)
+        port.response.bits.readData := result
+        port.response.valid         := RegNext(port.request.fire)
+      }
   }
 }

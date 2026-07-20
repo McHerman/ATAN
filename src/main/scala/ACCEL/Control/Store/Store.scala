@@ -9,8 +9,8 @@ class Store(implicit c: Configuration) extends Module {
     val instructionStream = Flipped(Decoupled(new StoreInst))
 
     val AXIST    = new AXIST_2(64, 2, 1, 1, 1)
-    val readPort = new TilelinkPort
-    val semaphoreIF = new TilelinkPort
+    val readPort = new TilelinkPort(c.tlBus)
+    val semaphoreIF = new TilelinkPort(c.tlSemBus)
 
     val debug = new StoreDebug
   })

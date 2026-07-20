@@ -6,8 +6,7 @@ import chisel3.util.log2Ceil
 case class TierConfig(
   nWritePorts: Int,            // external write ports (from compute units / load)
   nReadPorts:  Int,            // external read ports (to compute units / store)
-  nBanks:      Int,            // number of SRAM banks inside this tier
-  bankDepth:   Int,            // words per bank
+  bankDepth:   Int,            // words in the scratchpad
   atomic:      Boolean = false // enable AMO support on hostIn
 )
 
@@ -32,7 +31,7 @@ case class MemSystemConfig(
 
   /** Size of each tier in bytes (rounded up to power of 2). */
   val tierSizes: Seq[BigInt] = tiers.map { t =>
-    BigInt(1) << log2Ceil(t.nBanks * t.bankDepth * dataBusSize)
+    BigInt(1) << log2Ceil(t.bankDepth * dataBusSize)
   }
 
   /** Base address of each tier in the host address space.
@@ -62,18 +61,17 @@ object MemSystemConfig {
   // Tier sizes in bytes: t0=8 KB (base 0), t1=16 KB (base 16384), t2=32 KB (base 32768) → end=64 KB.
   def default(): MemSystemConfig = MemSystemConfig(
     tiers = Seq(
-      TierConfig(nWritePorts = 2, nReadPorts = 3, nBanks = 1, bankDepth = 1024),
-      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 1, bankDepth = 2048),
-      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 1, bankDepth = 4096)
+      TierConfig(nWritePorts = 2, nReadPorts = 3, bankDepth = 1024),
+      TierConfig(nWritePorts = 1, nReadPorts = 1, bankDepth = 2048),
+      TierConfig(nWritePorts = 1, nReadPorts = 1, bankDepth = 4096)
     )
   )
 
-  // t0=2 KB (base 0), t1=2 KB (base 2048), t2=8 KB (base 8192) → end=16 KB.
   def small(): MemSystemConfig = MemSystemConfig(
     tiers = Seq(
-      TierConfig(nWritePorts = 2, nReadPorts = 3, nBanks = 1, bankDepth = 256),
-      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 1, bankDepth = 256),
-      TierConfig(nWritePorts = 1, nReadPorts = 1, nBanks = 1, bankDepth = 1024)
+      TierConfig(nWritePorts = 2, nReadPorts = 3, bankDepth = 256),
+      TierConfig(nWritePorts = 1, nReadPorts = 1, bankDepth = 256),
+      TierConfig(nWritePorts = 1, nReadPorts = 1, bankDepth = 1024)
     )
   )
 }

@@ -5,8 +5,8 @@ import chisel3.util._
 
 class ScratchpadWrapper(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
-    val WritePorts = Vec(1 + c.grainDim, Flipped(new TilelinkPort))
-    val ReadPorts = Vec(c.bufferReadPorts, Flipped(new TilelinkPort))
+    val WritePorts = Vec(1 + c.grainDim, Flipped(new TilelinkPort(c.tlBus)))
+    val ReadPorts = Vec(c.bufferReadPorts, Flipped(new TilelinkPort(c.tlBus)))
   })
 
   val WriteArbiter = Module(new ScratchWriteArbiter(1 + c.grainDim))

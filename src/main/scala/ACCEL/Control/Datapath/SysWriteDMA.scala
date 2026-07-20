@@ -17,7 +17,7 @@ object HelperFunctions {
 class SysWriteDMA(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(new DMAWrite)
-    val scratchOut = new TilelinkPort
+    val scratchOut = new TilelinkPort(c.tlBus)
     val readPort = new Readport(Vec(c.dataBusSize, UInt(8.W)), Some(10))
   })
 

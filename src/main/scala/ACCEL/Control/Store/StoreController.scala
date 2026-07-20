@@ -8,8 +8,8 @@ class StoreController(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
     val instructionStream = new Readport(new StoreInst)
     val AXIST = new AXIST_2(64, 2, 1, 1, 1)
-    val readport = new TilelinkPort
-    val semaphoreIF = new TilelinkPort
+    val readport = new TilelinkPort(c.tlBus)
+    val semaphoreIF = new TilelinkPort(c.tlSemBus)
     val debug = new StoreDebug
   })
 

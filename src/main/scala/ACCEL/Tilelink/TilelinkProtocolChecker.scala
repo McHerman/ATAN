@@ -10,10 +10,10 @@ class TilelinkProtocolChecker(endpointType: String = "Host", name: String = "", 
   val io = IO(new Bundle {
     val a_valid = Input(Bool())
     val a_ready = Input(Bool())
-    val a_bits  = Input(new TilelinkA)
+    val a_bits  = Input(new TilelinkA(c.tlBus))
     val d_valid = Input(Bool())
     val d_ready = Input(Bool())
-    val d_bits  = Input(new TilelinkD)
+    val d_bits  = Input(new TilelinkD(c.tlBus))
   })
 
   val prefix = s"TL${if (name.nonEmpty) s"[$name]" else ""}"

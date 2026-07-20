@@ -13,7 +13,7 @@ class SemaphoreProgPort()(implicit c: Configuration) extends Bundle {
 
 class SemaphoreBank(noPorts: Int)(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
-    val inPorts = Vec(noPorts, Flipped(new TilelinkPort))
+    val inPorts = Vec(noPorts, Flipped(new TilelinkPort(c.tlSemBus)))
     val progPort = Flipped(Decoupled(new SemaphoreProgPort))
     val eventPort = Decoupled(new SemaphoreEvent)
   })
@@ -46,9 +46,9 @@ class SemaphoreBank(noPorts: Int)(implicit c: Configuration) extends Module {
     slaves = Seq.tabulate(noSemaphores * 2)(i =>
       TLSlaveConfig(Seq((BigInt(i) * BigInt(perSlaveStride), BigInt(perSlaveMask))))
     ),
-    //arbiterPolicy = "lock"
-    arbiterPolicy = "roundRobin"
-  )(c)
+    arbiterPolicy = "roundRobin",
+    tl = c.tlSemBus,
+  )
 
   val xbar = Module(new TLXbar(xbarConfig))
 

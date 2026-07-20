@@ -12,14 +12,15 @@ case class TLSlaveConfig(
 case class TLXbarConfig(
   nMasters: Int,
   slaves: Seq[TLSlaveConfig],
-  arbiterPolicy: String = "roundRobin" // or "lowestIndexFirst"
-)(implicit val c: MemBusConfig)
+  arbiterPolicy: String = "roundRobin", // or "lowestIndexFirst"
+  tl: TLBusConfig,
+)
 
 
 class TLXbar(config: TLXbarConfig) extends Module {
   val io = IO(new Bundle {
-    val in = Flipped(Vec(config.nMasters, new TilelinkPort()(config.c)))
-    val out = Vec(config.slaves.size, new TilelinkPort()(config.c))
+    val in = Flipped(Vec(config.nMasters, new TilelinkPort(config.tl)))
+    val out = Vec(config.slaves.size, new TilelinkPort(config.tl))
   })
 
   val nMasters = config.nMasters
@@ -53,8 +54,8 @@ class TLXbar(config: TLXbarConfig) extends Module {
       // For each address range, check if addr matches
       // mask indicates which bits are "don't care"
       // We want: (addr & ~mask) == base
-      val baseBits = base.U(config.c.addrWidth.W)
-      val maskBits = mask.U(config.c.addrWidth.W)
+      val baseBits = base.U(config.tl.addrWidth.W)
+      val maskBits = mask.U(config.tl.addrWidth.W)
       (addr & ~maskBits) === baseBits
       //(addr & maskBits) === baseBits
     }.reduce(_ || _)
@@ -75,8 +76,8 @@ class TLXbar(config: TLXbarConfig) extends Module {
   // Intermediate Wires with Transformed IDs
   // =========================================================================
   
-  val masterA = Wire(Vec(nMasters, Decoupled(new TilelinkA()(config.c))))
-  val masterD = Wire(Vec(nMasters, Flipped(Decoupled(new TilelinkD()(config.c)))))
+  val masterA = Wire(Vec(nMasters, Decoupled(new TilelinkA(config.tl))))
+  val masterD = Wire(Vec(nMasters, Flipped(Decoupled(new TilelinkD(config.tl)))))
   
   // Master-side A channel: Add ID offset
   (io.in zip masterA zip masterIdRanges).foreach { case ((ioIn, mA), (idStart, idEnd)) =>
@@ -99,7 +100,7 @@ class TLXbar(config: TLXbarConfig) extends Module {
   // =========================================================================
   val masterToSlave = (masterA zip routingMatrix).map { case (mA, routes) =>
     VecInit(routes.zipWithIndex.map { case (route, slaveIdx) =>
-      val req = Wire(Decoupled(new TilelinkA()(config.c)))
+      val req = Wire(Decoupled(new TilelinkA(config.tl)))
       req.bits := mA.bits
       req.valid := mA.valid && (route || (nSlaves == 1).B)
       req
@@ -136,7 +137,7 @@ class TLXbar(config: TLXbarConfig) extends Module {
   
   val slaveToMaster = io.out.map { slaveOut =>
     VecInit(masterIdRanges.map { idRange =>
-      val resp = Wire(Decoupled(new TilelinkD()(config.c)))
+      val resp = Wire(Decoupled(new TilelinkD(config.tl)))
       resp.bits := slaveOut.d.bits
       resp.valid := slaveOut.d.valid && sourceInRange(slaveOut.d.bits.source, idRange)
       resp

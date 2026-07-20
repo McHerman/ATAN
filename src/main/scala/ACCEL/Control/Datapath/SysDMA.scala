@@ -6,7 +6,7 @@ import chisel3.util._
 class SysDMA(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(new DMARead)
-    val scratchIn = new TilelinkPort
+    val scratchIn = new TilelinkPort(c.tlBus)
     val writePort = Decoupled(Vec(c.dataBusSize, UInt(c.arithDataWidth.W)))
   })
 

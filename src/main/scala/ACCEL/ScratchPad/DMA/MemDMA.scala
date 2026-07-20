@@ -17,10 +17,10 @@ import chisel3.util._
  */
 class MemDMA(sourceIdA: Int = 0, sourceIdB: Int = 0)(implicit c: MemBusConfig) extends Module {
   val io = IO(new Bundle {
-    val portA      = new TilelinkPort
-    val portB      = new TilelinkPort
-    val semaphoreA = new TilelinkPort   // pipeline A's semaphore master port
-    val semaphoreB = new TilelinkPort   // pipeline B's semaphore master port
+    val portA      = new TilelinkPort(c.tlBus)
+    val portB      = new TilelinkPort(c.tlBus)
+    val semaphoreA = new TilelinkPort(c.tlSemBus)
+    val semaphoreB = new TilelinkPort(c.tlSemBus)
     val interface  = Flipped(new dmaInterface(size = 2))
   })
 

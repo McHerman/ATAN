@@ -5,8 +5,8 @@ import chisel3.util._
 
 class ScratchWriteArbiter(numPorts: Int)(implicit c: MemBusConfig) extends Module {
   val io = IO(new Bundle {
-    val inPorts = Vec(numPorts, Flipped(new TilelinkPort))
-    val outPort = new TilelinkPort
+    val inPorts = Vec(numPorts, Flipped(new TilelinkPort(c.tlBus)))
+    val outPort = new TilelinkPort(c.tlBus)
   })
 
   io.inPorts.foreach { port =>

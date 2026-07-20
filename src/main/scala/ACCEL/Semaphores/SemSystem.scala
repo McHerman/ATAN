@@ -5,7 +5,7 @@ import chisel3.util._
 
 class SemSystem(noPorts: Int)(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
-    val inPorts = Vec(noPorts, Flipped(new TilelinkPort))
+    val inPorts = Vec(noPorts, Flipped(new TilelinkPort(c.tlSemBus)))
     val instructionStream = Flipped(Decoupled(new SemProgInst))
   })
 

@@ -6,11 +6,11 @@ import chisel3.util._
 class SysWrapper(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
     val in         = new Readport(new ExecuteInst)
-    val scratchOut = Vec(c.grainDim, new TilelinkPort)
-    val scratchIn  = Vec(2, Vec(c.grainDim, new TilelinkPort))
+    val scratchOut = Vec(c.grainDim, new TilelinkPort(c.tlBus))
+    val scratchIn  = Vec(2, Vec(c.grainDim, new TilelinkPort(c.tlBus)))
 
-    val writeSemaphoreIF = Vec(c.grainDim, new TilelinkPort)
-    val readSemaphoreIF = Vec(2, Vec(c.grainDim, new TilelinkPort))
+    val writeSemaphoreIF = Vec(c.grainDim, new TilelinkPort(c.tlSemBus))
+    val readSemaphoreIF = Vec(2, Vec(c.grainDim, new TilelinkPort(c.tlSemBus)))
 
     val debug      = new ExeDebug
   })

@@ -9,9 +9,9 @@ class Load(implicit c: Configuration) extends Module {
     val instructionStream = Flipped(Decoupled(new LoadInst))
 
     val AXIST      = Flipped(new AXIST_2(64, 2, 1, 1, 1))
-    val scratchOut = new TilelinkPort
+    val scratchOut = new TilelinkPort(c.tlBus)
 
-    val semaphoreIF = new TilelinkPort
+    val semaphoreIF = new TilelinkPort(c.tlSemBus)
 
     val debug = new LoadDebug
   })

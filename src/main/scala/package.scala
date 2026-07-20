@@ -3,6 +3,9 @@ import chisel3.util.log2Ceil
 
 package object ATA8 {
 
+  /** Explicit TileLink port sizing — passed as a constructor arg, not an implicit. */
+  case class TLBusConfig(dataBusSize: Int, addrWidth: Int, sourceWidth: Int)
+
   // Minimal bus-level parameters shared between Configuration and MemSystemConfig.
   // Modules that only need TileLink/data-bus dimensions should take this as their implicit.
   trait MemBusConfig {
@@ -12,6 +15,9 @@ package object ATA8 {
     def sourceWidth: Int
     // Width of the gen tag in the LSBs of every semaphore TL address.
     def semaphoreGenerationWidth: Int = 0
+
+    def tlBus:    TLBusConfig = TLBusConfig(dataBusSize, addrWidth, sourceWidth)
+    def tlSemBus: TLBusConfig = TLBusConfig(4,           addrWidth, sourceWidth)
   }
 
   // ── Logical parameter groups ───────────────────────────────────────────

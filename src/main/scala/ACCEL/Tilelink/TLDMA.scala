@@ -16,8 +16,8 @@ case class TLDMAConfig(
  */
 class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) extends Module {
   val io = IO(new Bundle {
-    val tl        = new TilelinkPort
-    val semaphoreIF = if (config.semaphore) Some(new TilelinkPort) else None
+    val tl        = new TilelinkPort(c.tlBus)
+    val semaphoreIF = if (config.semaphore) Some(new TilelinkPort(c.tlSemBus)) else None
     val interface = Flipped(new dmaInterface(1, config.semaphore))
     val dataIn    = if (config.write) Some(new Readport(UInt((c.dataBusSize * 8).W))) else None
     val dataOut   = if (config.read)  Some(Decoupled(UInt((c.dataBusSize * 8).W)))          else None
@@ -261,7 +261,7 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
         sem.a.bits.source  := sourceId.U
         sem.a.bits.address := semAcquireAddr
         sem.a.bits.data    := reg.semaphore.get.semStepSize
-        sem.a.bits.mask    := Fill(c.dataBusSize, 1.U(1.W))
+        sem.a.bits.mask    := Fill(c.tlSemBus.dataBusSize, 1.U(1.W))
         sem.a.bits.corrupt := 0.U
 
         when(sem.a.fire) {
@@ -291,7 +291,7 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
         sem.a.bits.source  := sourceId.U
         sem.a.bits.address := semAcquireAddr
         sem.a.bits.data    := (-reg.semaphore.get.semStepSize.asSInt).asUInt
-        sem.a.bits.mask    := Fill(c.dataBusSize, 1.U(1.W))
+        sem.a.bits.mask    := Fill(c.tlSemBus.dataBusSize, 1.U(1.W))
         sem.a.bits.corrupt := 0.U
 
         when(sem.a.fire) {
@@ -326,7 +326,7 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
         sem.a.bits.source  := sourceId.U
         sem.a.bits.address := semReleaseAddr
         sem.a.bits.data    := reg.semaphore.get.semStepSize
-        sem.a.bits.mask    := Fill(c.dataBusSize, 1.U(1.W))
+        sem.a.bits.mask    := Fill(c.tlSemBus.dataBusSize, 1.U(1.W))
         sem.a.bits.corrupt := 0.U
 
         when(sem.a.fire) {
