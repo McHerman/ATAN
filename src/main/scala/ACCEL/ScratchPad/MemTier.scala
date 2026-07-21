@@ -49,7 +49,7 @@ class MemTier(tier: TierConfig, nRwPorts: Int)(implicit mc: MemSystemConfig)
   (io.writePorts ++ allSplitters.map(_.io.write)).zip(writeArb.io.inPorts).foreach {
     case (src, dst) => dst <> src
   }
-  val writeHandler = Module(new TLScratchpadHandler(TLScratchConfig(read = false, write = true, atomic = false)))
+  val writeHandler = Module(new TLScratchpadHandler(TLScratchConfig(read = false, write = true, atomic = false, tlConfig = mc.tlBus)))
   writeHandler.io.tl <> writeArb.io.outPort
 
   // ── Read path: all read sources → arbiter → handler → scratchpad ─────────
@@ -58,13 +58,13 @@ class MemTier(tier: TierConfig, nRwPorts: Int)(implicit mc: MemSystemConfig)
   (io.readPorts ++ allSplitters.map(_.io.read)).zip(readArb.io.inPorts).foreach {
     case (src, dst) => dst <> src
   }
-  val readHandler = Module(new TLScratchpadHandler(TLScratchConfig(read = true, write = false, atomic = false)))
+  val readHandler = Module(new TLScratchpadHandler(TLScratchConfig(read = true, write = false, atomic = false, tlConfig = mc.tlBus)))
   readHandler.io.tl <> readArb.io.outPort
 
   // ── Scratchpad connections (with or without atomic handler) ───────────────
   if (tier.atomic) {
     val atomicHandler = Module(new TLScratchpadHandler(
-      TLScratchConfig(read = true, write = true, atomic = true)
+      TLScratchConfig(read = true, write = true, atomic = true, tlConfig = mc.tlBus)
     ))
     atomicHandler.io.tl              <> hostSplitter.io.amo.get
     atomicHandler.io.amoReserve.get.ready   := true.B

@@ -9,7 +9,7 @@ import org.scalatest.matchers.must.Matchers
 // port 0 = external actor, port 1 = handler's AMO reservation
 class AtomicIntegrationDUT(implicit c: Configuration) extends Module {
   val handler = Module(new TLScratchpadHandler(
-    TLScratchConfig(read = true, write = true, atomic = true, atomicIn = 1)
+    TLScratchConfig(read = true, write = true, atomic = true, atomicIn = 1, tlConfig = c.tlBus)
   ))
   val bank = Module(new AtomicReservationBank(2))
 
