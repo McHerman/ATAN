@@ -4,10 +4,11 @@ import chisel3.util.log2Ceil
 
 /** Per-tier scratchpad sizing. */
 case class TierConfig(
-  nWritePorts: Int,            // external write ports (from compute units / load)
-  nReadPorts:  Int,            // external read ports (to compute units / store)
-  bankDepth:   Int,            // words in the scratchpad
-  atomic:      Boolean = false // enable AMO support on hostIn
+  nWritePorts: Int,                      // external write ports (from compute units / load)
+  nReadPorts:  Int,                      // external read ports (to compute units / store)
+  bankDepth:   Int,                      // words in the scratchpad
+  atomic:      Boolean         = false,  // enable AMO support on hostIn
+  mccBus:      Option[TLBusConfig] = None,  // when set, expose mccIn TL port for RISC-V core
 )
 
 /**

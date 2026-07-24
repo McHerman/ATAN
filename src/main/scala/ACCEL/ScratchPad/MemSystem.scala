@@ -18,6 +18,8 @@ class MemSystem(ctrlCfg: Configuration)(implicit mc: MemSystemConfig) extends Mo
     else if (i == 0 || i == nTiers - 1) 1
     else 2
 
+  private val mccBus0 = mc.tiers(0).mccBus
+
   val io = IO(new Bundle {
     val tier0WritePorts = Vec(mc.tiers(0).nWritePorts, Flipped(new TilelinkPort(mc.tlBus)))
     val tier0ReadPorts  = Vec(mc.tiers(0).nReadPorts,  Flipped(new TilelinkPort(mc.tlBus)))
@@ -28,6 +30,7 @@ class MemSystem(ctrlCfg: Configuration)(implicit mc: MemSystemConfig) extends Mo
     val semaphoreB = Vec(nDMAs, new TilelinkPort(mc.tlSemBus))
 
     val hostIn = Flipped(new TilelinkPort(mc.tlBus))
+    val mccIn  = if (mccBus0.isDefined) Some(Flipped(new TilelinkPort(mccBus0.get))) else None
   })
 
   // ── Instantiate tiers ─────────────────────────────────────────────────────
@@ -88,6 +91,11 @@ class MemSystem(ctrlCfg: Configuration)(implicit mc: MemSystemConfig) extends Mo
     hostDemux.io.out(i).a.ready := tier.io.hostIn.a.ready
 
     tier.io.hostIn.d <> hostDemux.io.out(i).d
+  }
+
+  // ── Wire mccIn directly to tier 0 ────────────────────────────────────────
+  if (mccBus0.isDefined) {
+    tiers(0).io.mccIn.get <> io.mccIn.get
   }
 
   // ── Wire DMA interfaces and inter-tier connections ────────────────────────

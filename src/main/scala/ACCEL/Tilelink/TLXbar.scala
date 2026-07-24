@@ -39,8 +39,9 @@ class TLXbar(config: TLXbarConfig) extends Module {
       .map(_._1)
   }
 
-  // Assign source ID ranges for each master
-  val masterIdRanges = assignIdRanges(Seq.fill(nMasters)(10)) // 10 ids each 
+  // Assign source ID ranges for each master (capped to bus source capacity)
+  val idsPerMaster   = math.min(10, 1 << config.tl.sourceWidth)
+  val masterIdRanges = assignIdRanges(Seq.fill(nMasters)(idsPerMaster))
   
   // Helper function to trim ID based on range size
   def trimId(id: UInt, rangeSize: Int): UInt = 

@@ -24,6 +24,7 @@ class MemTier(tier: TierConfig, nRwPorts: Int)(implicit mc: MemSystemConfig)
     val readPorts  = Vec(tier.nReadPorts,  Flipped(new TilelinkPort(mc.tlBus)))
     val rwPorts    = Vec(nRwPorts,        Flipped(new TilelinkPort(mc.tlBus)))
     val hostIn     = Flipped(new TilelinkPort(mc.tlBus))
+    val mccIn      = if (tier.mccBus.isDefined) Some(Flipped(new TilelinkPort(tier.mccBus.get))) else None
   })
 
   // ── Scratchpad: 1 write port, 1 read port ────────────────────────────────
@@ -61,26 +62,46 @@ class MemTier(tier: TierConfig, nRwPorts: Int)(implicit mc: MemSystemConfig)
   val readHandler = Module(new TLScratchpadHandler(TLScratchConfig(read = true, write = false, atomic = false, tlConfig = mc.tlBus)))
   readHandler.io.tl <> readArb.io.outPort
 
-  // ── Scratchpad connections (with or without atomic handler) ───────────────
-  if (tier.atomic) {
-    val atomicHandler = Module(new TLScratchpadHandler(
+  // ── Optional atomic handler (AMO on hostIn) ──────────────────────────────
+  val atomicHandlerOpt: Option[TLScratchpadHandler] = if (tier.atomic) {
+    val ah = Module(new TLScratchpadHandler(
       TLScratchConfig(read = true, write = true, atomic = true, tlConfig = mc.tlBus)
     ))
-    atomicHandler.io.tl              <> hostSplitter.io.amo.get
-    atomicHandler.io.amoReserve.get.ready   := true.B
-    atomicHandler.io.reserveIn.get(0).valid := false.B
-    atomicHandler.io.reserveIn.get(0).bits  := DontCare
+    ah.io.tl                     <> hostSplitter.io.amo.get
+    ah.io.amoReserve.get.ready   := true.B
+    ah.io.reserveIn.get(0).valid := false.B
+    ah.io.reserveIn.get(0).bits  := DontCare
+    Some(ah)
+  } else None
 
-    val memArb = Module(new ScratchpadMemArbiter)
-    memArb.io.wPorts(0) <> writeHandler.io.wMem.get
-    memArb.io.wPorts(1) <> atomicHandler.io.wMem.get
-    memArb.io.rPorts(0) <> readHandler.io.rMem.get
-    memArb.io.rPorts(1) <> atomicHandler.io.rMem.get
-    scratchpad.io.Writeport(0) <> memArb.io.wMem
-    scratchpad.io.Readport(0)  <> memArb.io.rMem
-  } else {
+  // ── Optional mcc handler (full R/W/AMO on mccIn) ─────────────────────────
+  val mccHandlerOpt: Option[TLScratchpadHandler] = tier.mccBus.map { mccBus =>
+    val mh = Module(new TLScratchpadHandler(
+      TLScratchConfig(read = true, write = true, atomic = true, tlConfig = mccBus)
+    ))
+    mh.io.tl                     <> io.mccIn.get
+    mh.io.amoReserve.get.ready   := true.B
+    mh.io.reserveIn.get(0).valid := false.B
+    mh.io.reserveIn.get(0).bits  := DontCare
+    mh
+  }
+
+  // ── Scratchpad connections ────────────────────────────────────────────────
+  val extraHandlers = atomicHandlerOpt.toSeq ++ mccHandlerOpt.toSeq
+  if (extraHandlers.isEmpty) {
     scratchpad.io.Writeport(0) <> writeHandler.io.wMem.get
     scratchpad.io.Readport(0)  <> readHandler.io.rMem.get
+  } else {
+    val nArbPorts = 1 + extraHandlers.length
+    val memArb = Module(new ScratchpadMemArbiter(nArbPorts))
+    memArb.io.wPorts(0) <> writeHandler.io.wMem.get
+    memArb.io.rPorts(0) <> readHandler.io.rMem.get
+    extraHandlers.zipWithIndex.foreach { case (h, i) =>
+      memArb.io.wPorts(i + 1) <> h.io.wMem.get
+      memArb.io.rPorts(i + 1) <> h.io.rMem.get
+    }
+    scratchpad.io.Writeport(0) <> memArb.io.wMem
+    scratchpad.io.Readport(0)  <> memArb.io.rMem
   }
 }
 

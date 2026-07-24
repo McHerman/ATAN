@@ -13,19 +13,21 @@ class ATA8(config: Configuration, memCfgBase: MemSystemConfig = MemSystemConfig.
     val AXIST_inInst  = Flipped(new AXIST_2(128, 2, 1, 1, 1))
     val axi_s0        = Flipped(new CustomAXI4Lite(32, 32))
 
-    val hostIn = Flipped(new TilelinkPort(mc.tlBus))
-    //val dbgLoadState  = Output(UInt(4.W))
-    //val dbgExeState   = Output(UInt(4.W))
-    //val dbgStoreState = Output(UInt(4.W))
+    val hostIn   = Flipped(new TilelinkPort(mc.tlBus))
+    val mccIn    = if (c.riscv.enabled) Some(Flipped(new TilelinkPort(c.riscv.tlBus))) else None
+    val mccSemIn = if (c.riscv.enabled) Some(Flipped(new TilelinkPort(c.riscv.tlBus))) else None
   })
 
   implicit lazy val mc: MemSystemConfig = memCfgBase.copy(
     sourceWidth = c.sourceWidth,
     semGenWidth = c.semaphoreGenerationWidth,
+    tiers = if (c.riscv.enabled) {
+      memCfgBase.tiers.updated(0, memCfgBase.tiers(0).copy(mccBus = Some(c.riscv.tlBus)))
+    } else memCfgBase.tiers,
   )
   private val nDMAs = mc.tiers.length - 1
   private val nExeSemPorts = 3 * c.grainDim  // writeSem(grainDim) + readSem(2 * grainDim)
-  private val nSemPorts = nExeSemPorts + 1 + 1 + 2 * nDMAs  // Execute + Load + Store + DMA
+  private val nSemPorts = nExeSemPorts + 1 + 1 + 2 * nDMAs + (if (c.riscv.enabled) 1 else 0)
 
   val FrontEnd     = Module(new FrontEnd)
   val Execute      = Module(new Execute())
@@ -75,11 +77,42 @@ class ATA8(config: Configuration, memCfgBase: MemSystemConfig = MemSystemConfig.
   MemSys.io.tier0WritePorts <> VecInit(Execute.io.scratchOut ++ VecInit(Seq(Load.io.scratchOut)))
   MemSys.io.hostIn <> io.hostIn
 
+  if (c.riscv.enabled) {
+    MemSys.io.mccIn.get <> io.mccIn.get
+  }
+
   //// SEMAPHORE SYSTEM — DMA semaphore ports ////
 
   for (i <- 0 until nDMAs) {
     MemSys.io.semaphoreA(i) <> SemSys.io.inPorts(semIdx); semIdx += 1
     MemSys.io.semaphoreB(i) <> SemSys.io.inPorts(semIdx); semIdx += 1
+  }
+
+  //// SEMAPHORE SYSTEM — mcc port (field-by-field: 1-bit source ↔ 8-bit source) ////
+
+  if (c.riscv.enabled) {
+    val semPort = SemSys.io.inPorts(semIdx)
+    val mccSem  = io.mccSemIn.get
+    semPort.a.valid        := mccSem.a.valid
+    mccSem.a.ready         := semPort.a.ready
+    semPort.a.bits.opcode  := mccSem.a.bits.opcode
+    semPort.a.bits.param   := mccSem.a.bits.param
+    semPort.a.bits.size    := mccSem.a.bits.size
+    semPort.a.bits.source  := mccSem.a.bits.source
+    semPort.a.bits.address := mccSem.a.bits.address
+    semPort.a.bits.data    := mccSem.a.bits.data
+    semPort.a.bits.mask    := mccSem.a.bits.mask
+    semPort.a.bits.corrupt := mccSem.a.bits.corrupt
+    mccSem.d.valid         := semPort.d.valid
+    semPort.d.ready        := mccSem.d.ready
+    mccSem.d.bits.opcode   := semPort.d.bits.opcode
+    mccSem.d.bits.param    := semPort.d.bits.param
+    mccSem.d.bits.size     := semPort.d.bits.size
+    mccSem.d.bits.source   := semPort.d.bits.source
+    mccSem.d.bits.sink     := semPort.d.bits.sink
+    mccSem.d.bits.denied   := semPort.d.bits.denied
+    mccSem.d.bits.data     := semPort.d.bits.data
+    mccSem.d.bits.corrupt  := semPort.d.bits.corrupt
   }
 
   /// DEBUG ///
