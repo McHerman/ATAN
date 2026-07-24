@@ -26,6 +26,15 @@ object `ATAN` extends SbtModule {
 
   override def moduleDeps = Seq(shared)
 
+  // Include mcc RISC-V core sources and the mcc-integration wrapper.
+  // scala-mcc is kept separate so mcc's own atan module (which doesn't have
+  // mcc.* on its classpath) doesn't try to compile the integration wrapper.
+  override def sources = T.sources {
+    super.sources() ++
+      Seq(PathRef(millSourcePath / os.up / "mcc" / "src" / "main" / "scala")) ++
+      Seq(PathRef(millSourcePath / "src" / "main" / "scala-mcc"))
+  }
+
   override def scalacOptions = Seq(
     "-language:reflectiveCalls",
     "-deprecation",

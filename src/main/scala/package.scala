@@ -68,6 +68,22 @@ package object ATA8 {
     generationWidth: Int = 0,
   )
 
+  /** Embedded RISC-V core (mcc) integration parameters. */
+  case class MccParams(
+    enabled:      Boolean = false,
+    baseAddr:     Long    = 0x80000000L,
+    tohostOffset: Int     = 0x1000,
+    imemWords:    Int     = 4096,
+    dataSpmWords: Int     = 1024,
+    dataSpmBase:  Int     = 0x0000,
+    sharedSpmBase: Int    = 0x2000,
+    semBase:      Int     = 0x4000,
+  ) {
+    val addrBits: Int      = log2Ceil(imemWords * 4)
+    val coreBusConf: BusParams = BusParams(dataBusSize = 4, addrWidth = 32, sourceWidth = 1)
+    val tlBus: TLBusConfig = TLBusConfig(dataBusSize = 4, addrWidth = 16, sourceWidth = 1)
+  }
+
   /** Trigger-system (predicate-table dispatcher) parameters. */
   case class TriggerParams(
     // Number of resident rows in the trigger table (parallel-evaluated each
@@ -98,6 +114,7 @@ package object ATA8 {
     control:   ControlParams   = ControlParams(),
     semaphore: SemaphoreParams = SemaphoreParams(),
     trigger:   TriggerParams   = TriggerParams(),
+    riscv:     MccParams       = MccParams(),
   ) extends MemBusConfig {
 
     // ── Flat accessors (delegate into the grouped params) ────────────────
