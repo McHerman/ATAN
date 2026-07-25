@@ -8,7 +8,7 @@ class Load(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
     val instructionStream = Flipped(Decoupled(new LoadInst))
 
-    val AXIST      = Flipped(new AXIST_2(64, 2, 1, 1, 1))
+    val AXIST      = Flipped(new AXIST_2(c.axiStreamWidth, 2, 1, 1, 1))
     val scratchOut = new TilelinkPort(c.tlBus)
 
     val semaphoreIF = new TilelinkPort(c.tlSemBus)

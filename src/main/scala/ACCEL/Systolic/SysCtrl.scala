@@ -15,7 +15,7 @@ class SysCtrl(implicit c: Configuration) extends Module {
 
     val ctrl = Output(new Bundle{val state = UInt(1.W); val shift = Bool()})
     
-    val sizes = Output(Vec(c.grainDim, UInt(log2Ceil(c.dataBusSize + 1).W)))
+    val sizes = Output(Vec(c.grainDim, UInt(log2Ceil(c.arrayDim + 1).W)))
     val activateLoopBack = Input(Bool())
 
     val completed = Output(Bool())

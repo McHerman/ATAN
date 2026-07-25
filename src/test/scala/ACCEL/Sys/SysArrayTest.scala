@@ -10,6 +10,17 @@ import scala.io.Source
 
 class SysArrayTest extends AnyFreeSpec with Matchers with ChiselSim {
 
+  val maxCycles = 1000
+
+  def waitFor(clock: chisel3.Clock)(cond: => Boolean, msg: String): Unit = {
+    var cycles = 0
+    while (!cond) {
+      require(cycles < maxCycles, s"Timeout waiting for: $msg (after $maxCycles cycles)")
+      clock.step()
+      cycles += 1
+    }
+  }
+
   //val n = 2 + Random.nextInt(30)
   val n = 8
   val weight = "W_Matrix.txt"
@@ -37,13 +48,23 @@ class SysArrayTest extends AnyFreeSpec with Matchers with ChiselSim {
     //val n = 2 + Random.nextInt(30)
     //val n = 16
 
-    implicit val c = Configuration.default()
+    // Grain-level unit test: keep arrayDim == dataBusSize (both 8) so a raw
+    // writePort beat maps 1:1 onto array lanes without exercising the
+    // BeatUnpacker deserialization logic, which is covered separately by
+    // BeatUnpackerTest at the real 16/64 configuration. All three groups must
+    // be overridden together since Configuration's require()s are checked on
+    // every intermediate .withX() copy.
+    implicit val c = Configuration(
+      bus      = BusParams(dataBusSize = 8, axiStreamWidth = 64),
+      data     = DatapathParams(accDataWidth = 8),
+      systolic = SystolicParams(arrayDim = 8),
+    )
 
     simulate(new Grain()) { dut =>
 
       for (i <- 0 until 8) {
 
-        dut.io.writePort(1)(0).ready.expect(true.B)
+        waitFor(dut.clock)(dut.io.writePort(1)(0).ready.peek().litToBoolean, "writePort(1)(0).ready")
         dut.io.writePort(1)(0).valid.poke(true.B)
 
         for(k <- 0 until 8){
@@ -56,7 +77,7 @@ class SysArrayTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.writePort(1)(0).valid.poke(false.B)
 
       for (i <- 0 until 8) {
-        dut.io.writePort(0)(0).ready.expect(true.B)
+        waitFor(dut.clock)(dut.io.writePort(0)(0).ready.peek().litToBoolean, "writePort(0)(0).ready")
         dut.io.writePort(0)(0).valid.poke(true.B)
 
 
@@ -106,13 +127,23 @@ class SysArrayTest extends AnyFreeSpec with Matchers with ChiselSim {
   }
 
   "SysArray should execute OS" in {
-    implicit val c = Configuration.default()
+    // Grain-level unit test: keep arrayDim == dataBusSize (both 8) so a raw
+    // writePort beat maps 1:1 onto array lanes without exercising the
+    // BeatUnpacker deserialization logic, which is covered separately by
+    // BeatUnpackerTest at the real 16/64 configuration. All three groups must
+    // be overridden together since Configuration's require()s are checked on
+    // every intermediate .withX() copy.
+    implicit val c = Configuration(
+      bus      = BusParams(dataBusSize = 8, axiStreamWidth = 64),
+      data     = DatapathParams(accDataWidth = 8),
+      systolic = SystolicParams(arrayDim = 8),
+    )
 
     simulate(new Grain()) { dut =>
 
       for (i <- 0 until 8) {
 
-        dut.io.writePort(1)(0).ready.expect(true.B)
+        waitFor(dut.clock)(dut.io.writePort(1)(0).ready.peek().litToBoolean, "writePort(1)(0).ready")
         dut.io.writePort(1)(0).valid.poke(true.B)
 
         for(k <- 0 until 8){
@@ -125,7 +156,7 @@ class SysArrayTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.writePort(1)(0).valid.poke(false.B)
 
       for (i <- 0 until 8) {
-        dut.io.writePort(0)(0).ready.expect(true.B)
+        waitFor(dut.clock)(dut.io.writePort(0)(0).ready.peek().litToBoolean, "writePort(0)(0).ready")
         dut.io.writePort(0)(0).valid.poke(true.B)
 
 
