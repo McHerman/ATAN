@@ -28,15 +28,16 @@ package object ATA8 {
 
   /** Interconnect / TileLink-ish bus dimensions. */
   case class BusParams(
-    dataBusSize: Int = 8,
-    addrWidth:   Int = 16,
-    sourceWidth: Int = 8,   // covers TLXbar ID ranges: 10 ids/master rounded to 16
+    dataBusSize:    Int = 64,   // bytes per TileLink beat
+    addrWidth:      Int = 24,
+    sourceWidth:    Int = 8,    // covers TLXbar ID ranges: 10 ids/master rounded to 16
+    axiStreamWidth: Int = 128,  // bits per host-facing AXI-Stream tdata word
   )
 
   /** Arithmetic / accumulator datapath widths. */
   case class DatapathParams(
     arithDataWidth: Int = 8,
-    accDataWidth:   Int = 8,
+    accDataWidth:   Int = 32,
     modeWidth:      Int = 1,
   )
 
@@ -44,6 +45,7 @@ package object ATA8 {
   case class SystolicParams(
     grainDim:      Int = 1,
     sysDim:        Int = 1,
+    arrayDim:      Int = 16,   // PE lanes per side of a PEArray tile
     grainFIFOSize: Int = 64,
     grainACCUSize: Int = 64,
   )
@@ -106,6 +108,7 @@ package object ATA8 {
     def bufferWritePorts = memory.bufferWritePorts
     def grainDim         = systolic.grainDim
     def sysDim           = systolic.sysDim
+    def arrayDim         = systolic.arrayDim
     def grainFIFOSize    = systolic.grainFIFOSize
     def grainACCUSize    = systolic.grainACCUSize
     def arithDataWidth   = data.arithDataWidth
@@ -126,6 +129,7 @@ package object ATA8 {
     def addrWidth           = bus.addrWidth
     def dataBusSize         = bus.dataBusSize
     def sourceWidth         = bus.sourceWidth
+    def axiStreamWidth      = bus.axiStreamWidth
 
     // ── Group-level overriders (less verbose than nested .copy chains) ───
     def withBus(f: BusParams => BusParams):                  Configuration = copy(bus       = f(bus))
@@ -143,6 +147,12 @@ package object ATA8 {
 
     require(accDataWidth >= arithDataWidth, "accDataWidth must be >= arithDataWidth")
     require(accDataWidth % 8 == 0, "accDataWidth must be a multiple of 8")
+    require(dataBusSize % (arrayDim * arithDataWidth / 8) == 0,
+      "dataBusSize must divide evenly into arrayDim*arithDataWidth/8-byte sub-rows (X/Y beat deserialization)")
+    require(dataBusSize == arrayDim * accDataBytes,
+      "dataBusSize must exactly equal arrayDim*accDataBytes so one drained output row is exactly one TL beat")
+    require((dataBusSize * 8) % axiStreamWidth == 0,
+      "dataBusSize*8 must divide evenly by axiStreamWidth (AXI-Stream beat assembly)")
     require(nSemaphores > 0, "nSemaphores must be positive")
     require(semaphoreGenerationWidth >= 0, "semaphoreGenerationWidth must be non-negative")
   }
