@@ -6,14 +6,18 @@ import chisel3.util._
 /**
  * Top-level DUT combining ATA8 and MccWrapper for combined simulation.
  *
- * mcc dmem is routed through a TLXbar to three destinations:
- *   [dataSpmBase,  dataSpmBase  + dataSpmWords*4 - 1] → private mcc-only data SPM
- *   [sharedSpmBase, sharedSpmBase + tier0Size - 1]    → ATAN tier-0 shared scratchpad
- *   [semBase,      semBase      + 0x0FFF]             → ATAN semaphore bank
+ * mcc dmem is routed through a TLXbar to two destinations, mirroring
+ * mcc.MccTestHarness's own structure:
+ *   [sharedSpmBase, sharedSpmBase + tier0Size - 1] → ATAN tier-0 shared scratchpad
+ *   [semBase,       semBase       + 0x00FF]        → ATAN semaphore bank
  *
- * Address transformations applied before forwarding:
- *   tier-0 path : subtract sharedSpmBase so tier-0 sees offsets from 0
- *   sem path    : (addr - semBase) >> 2  converts byte addr to sem-address
+ * sharedSpmBase is 0 (see MccParams doc): the compiler emits buffer
+ * pointers with no offset, assuming they route directly to the SPM, so no
+ * address rebasing happens on that path (TLXbar itself never modifies
+ * addresses — a request routed to output x keeps whatever address it had
+ * on input). semBase (0x4000) is hardcoded in the compiler; the sem path
+ * strips it by subtraction only — SemaphoreBank is byte-indexed, so the
+ * rebased address goes through as-is (no additional shift).
  *
  * mcc imem is private (mcc.ImemTL, wired up inside MccWrapper) and never
  * touches ATAN's memory system.
@@ -53,66 +57,52 @@ class AtanMccDUT(
   io.mccSuccess  := mcc.io.success
   io.mccInitDone := mcc.io.initDone
 
-  // ── TLXbar: route mcc dmem to three slaves ──────────────────────────────
+  // ── TLXbar: route mcc dmem to two slaves ────────────────────────────────
 
   val tier0Size = memCfgBase.tiers(0).bankDepth * atanConfig.dataBusSize
 
   val xbar = Module(new TLXbar(TLXbarConfig(
     nMasters = 1,
     slaves = Seq(
-      TLSlaveConfig(addressSet = Seq((BigInt(c.riscv.dataSpmBase), BigInt(c.riscv.dataSpmWords * 4 - 1)))),
       TLSlaveConfig(addressSet = Seq((BigInt(c.riscv.sharedSpmBase), BigInt(tier0Size - 1)))),
-      TLSlaveConfig(addressSet = Seq((BigInt(c.riscv.semBase), BigInt(0x0FFF)))),
+      TLSlaveConfig(addressSet = Seq((BigInt(c.riscv.semBase), BigInt(0x00FF)))),
     ),
     tl = c.riscv.tlBus,
   )))
 
   xbar.io.in(0) <> mcc.io.dmem
 
-  // ── Slave 0: private mcc data SPM (4KB by default) ──────────────────────
-
-  val spmBus: MemBusConfig = Configuration(bus = BusParams(dataBusSize = 4, addrWidth = 16, sourceWidth = 1))
-  val privateSpm = Module(new MemTierScratchpad(
-    SPMConfig(bankDepth = c.riscv.dataSpmWords, writeports = 1, readports = 1)(spmBus)
-  )(spmBus))
-  val spmHandler = Module(new TLScratchpadHandler(
-    TLScratchConfig(read = true, write = true, atomic = false, tlConfig = c.riscv.tlBus)
-  )(spmBus))
-  spmHandler.io.tl <> xbar.io.out(0)
-  privateSpm.io.Writeport(0) <> spmHandler.io.wMem.get
-  privateSpm.io.Readport(0)  <> spmHandler.io.rMem.get
-
-  // ── Slave 1: ATAN tier-0 shared scratchpad ───────────────────────────────
-  // Subtract sharedSpmBase so tier-0 sees local addresses from 0.
+  // ── Slave 0: ATAN tier-0 shared scratchpad ───────────────────────────────
+  // sharedSpmBase = 0, so no rebasing is needed on this path.
 
   val mccIn = ata8.io.mccIn.get
-  val out1  = xbar.io.out(1)
-  mccIn.a.valid        := out1.a.valid
-  out1.a.ready         := mccIn.a.ready
-  mccIn.a.bits.opcode  := out1.a.bits.opcode
-  mccIn.a.bits.param   := out1.a.bits.param
-  mccIn.a.bits.size    := out1.a.bits.size
-  mccIn.a.bits.source  := out1.a.bits.source
-  mccIn.a.bits.address := out1.a.bits.address - c.riscv.sharedSpmBase.U
-  mccIn.a.bits.mask    := out1.a.bits.mask
-  mccIn.a.bits.data    := out1.a.bits.data
-  mccIn.a.bits.corrupt := out1.a.bits.corrupt
-  out1.d <> mccIn.d
+  val out0  = xbar.io.out(0)
+  mccIn.a.valid        := out0.a.valid
+  out0.a.ready         := mccIn.a.ready
+  mccIn.a.bits.opcode  := out0.a.bits.opcode
+  mccIn.a.bits.param   := out0.a.bits.param
+  mccIn.a.bits.size    := out0.a.bits.size
+  mccIn.a.bits.source  := out0.a.bits.source
+  mccIn.a.bits.address := out0.a.bits.address - c.riscv.sharedSpmBase.U
+  mccIn.a.bits.mask    := out0.a.bits.mask
+  mccIn.a.bits.data    := out0.a.bits.data
+  mccIn.a.bits.corrupt := out0.a.bits.corrupt
+  out0.d <> mccIn.d
 
-  // ── Slave 2: ATAN semaphore bank ────────────────────────────────────────
-  // Convert byte offset to sem-address: (addr - semBase) >> 2.
+  // ── Slave 1: ATAN semaphore bank ────────────────────────────────────────
+  // Strip semBase only — SemaphoreBank is byte-indexed, no further shift.
 
   val mccSemIn = ata8.io.mccSemIn.get
-  val out2     = xbar.io.out(2)
-  mccSemIn.a.valid        := out2.a.valid
-  out2.a.ready            := mccSemIn.a.ready
-  mccSemIn.a.bits.opcode  := out2.a.bits.opcode
-  mccSemIn.a.bits.param   := out2.a.bits.param
-  mccSemIn.a.bits.size    := out2.a.bits.size
-  mccSemIn.a.bits.source  := out2.a.bits.source
-  mccSemIn.a.bits.address := (out2.a.bits.address - c.riscv.semBase.U) >> 2
-  mccSemIn.a.bits.mask    := out2.a.bits.mask
-  mccSemIn.a.bits.data    := out2.a.bits.data
-  mccSemIn.a.bits.corrupt := out2.a.bits.corrupt
-  out2.d <> mccSemIn.d
+  val out1     = xbar.io.out(1)
+  mccSemIn.a.valid        := out1.a.valid
+  out1.a.ready            := mccSemIn.a.ready
+  mccSemIn.a.bits.opcode  := out1.a.bits.opcode
+  mccSemIn.a.bits.param   := out1.a.bits.param
+  mccSemIn.a.bits.size    := out1.a.bits.size
+  mccSemIn.a.bits.source  := out1.a.bits.source
+  mccSemIn.a.bits.address := out1.a.bits.address - c.riscv.semBase.U
+  mccSemIn.a.bits.mask    := out1.a.bits.mask
+  mccSemIn.a.bits.data    := out1.a.bits.data
+  mccSemIn.a.bits.corrupt := out1.a.bits.corrupt
+  out1.d <> mccSemIn.d
 }
