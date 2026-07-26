@@ -202,15 +202,9 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
       }
       is(modify){
         val sel    = reg.address(regSelectBit)
-        //val newVal = regs(sel) - reg.data
-        val newVal = Wire(UInt(16.W)) 
+        val newVal = Wire(UInt(16.W))
+        newVal := regs(sel) + reg.data
 
-        when(reg.data.asSInt >= 0.S){
-          newVal := regs(sel) + reg.data.asUInt
-        }.otherwise{
-          newVal := regs(sel) - reg.data.asUInt
-        }
-  
 
         when(!applied) {
           req(idx)(sel) := true.B
