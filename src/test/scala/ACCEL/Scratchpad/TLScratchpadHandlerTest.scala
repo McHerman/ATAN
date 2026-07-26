@@ -455,7 +455,9 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
     )(wideC)) { dut =>
       // Write 0xDEADBEEF at TL byte address 0x0004.
       // muxOut=4; index=addr[3:2]=1 → slot 1 in the 128-bit word.
-      // Scatter: addr=0x0004>>4=0, bytes[4..7]=EF BE AD DE, strobe[4..7]=true.
+      // Scatter: addr passes through unshifted (byte address; the word-index
+      // conversion happens downstream in MemTierScratchpad, matching the
+      // read path's convention), bytes[4..7]=EF BE AD DE, strobe[4..7]=true.
       dut.io.tl.a.bits.opcode.poke(TilelinkOpcodes.PutFullData)
       dut.io.tl.a.bits.param.poke(0.U)
       dut.io.tl.a.bits.size.poke(4.U)
@@ -470,7 +472,7 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.clock.step()
 
       dut.io.wMem.get.valid.expect(true.B)
-      dut.io.wMem.get.bits.addr.expect(0.U)
+      dut.io.wMem.get.bits.addr.expect(0x0004.U)
       for (i <- 0 until 4)  dut.io.wMem.get.bits.data.strb(i).expect(false.B)
       dut.io.wMem.get.bits.data.writeData(4).expect(0xEF.U)
       dut.io.wMem.get.bits.data.writeData(5).expect(0xBE.U)
@@ -546,10 +548,10 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
       TLScratchConfig(read = true, write = true, atomic = true, tlConfig = wideTlCfg)
     )(wideC)) { dut =>
       // AMO ADD at TL byte address 0x0008 (slot 2 of the 128-bit word), adding 10.
-      // amoRead scatter: memAddr = 0x0008>>4 = 0.
+      // amoRead scatter: memAddr passes through unshifted = 0x0008.
       // gather: index=2 → extracts bytes[8..11]. readData(8)=100, rest=0 → memVal=100.
       // result = 100+10 = 110; originalData = 100.
-      // amoWrite scatter: writeAddr=0, bytes[8..11]=0x6E/0/0/0, strobe[8..11]=true.
+      // amoWrite scatter: writeAddr=0x0008, bytes[8..11]=0x6E/0/0/0, strobe[8..11]=true.
       // amoReturn: byteOff=0, d.data = originalData = 100.
       dut.io.tl.a.valid.poke(false.B)
       dut.io.tl.d.ready.poke(false.B)
@@ -576,10 +578,10 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.amoReserve.get.ready.poke(true.B)
       dut.clock.step()   // amoLock → amoRead
 
-      // amoRead: scatter address = 0x0008>>4 = 0
+      // amoRead: scatter address passes through unshifted = 0x0008
       dut.io.amoReserve.get.ready.poke(false.B)
       dut.io.rMem.get.request.valid.expect(true.B)
-      dut.io.rMem.get.request.bits.addr.get.expect(0.U)
+      dut.io.rMem.get.request.bits.addr.get.expect(0x0008.U)
       dut.io.rMem.get.request.ready.poke(true.B)
       dut.clock.step()   // amoRead: request fires → amoOp
 
@@ -593,7 +595,7 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
       // amoWrite: scatter(110, 0xF, 0x0008): writeAddr=0, bytes[8..11]=0x6E/0/0/0
       dut.io.rMem.get.response.valid.poke(false.B)
       dut.io.wMem.get.valid.expect(true.B)
-      dut.io.wMem.get.bits.addr.expect(0.U)
+      dut.io.wMem.get.bits.addr.expect(0x0008.U)
       dut.io.wMem.get.bits.data.writeData(8).expect(110.U)
       for (i <- 9 until 12) dut.io.wMem.get.bits.data.writeData(i).expect(0.U)
       for (i <- 0 until 8)  dut.io.wMem.get.bits.data.strb(i).expect(false.B)

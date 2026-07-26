@@ -48,8 +48,7 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
       val writeData = (data << (index * (tlBytes * 8).U))(c.dataBusSize * 8 - 1, 0).asTypeOf(Vec(c.dataBusSize, UInt(8.W)))
       val writeMask = VecInit((mask << (index * tlBytes.U))(c.dataBusSize - 1, 0).asBools)
 
-      val writeAddr = addr >> muxOut.U
-      (writeData, writeMask, writeAddr)
+      (writeData, writeMask, addr)
     }
   }
 
@@ -158,10 +157,12 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
 
         regValid := io.tl.a.fire
 
-        when(beatCnt > config.tlConfig.dataBusSize.U && writeIF.fire) {
-          beatCnt := beatCnt - config.tlConfig.dataBusSize.U
-        }.otherwise {
-          state := sWriteReturn
+        when(writeIF.fire) {
+          when(beatCnt > config.tlConfig.dataBusSize.U) {
+            beatCnt := beatCnt - config.tlConfig.dataBusSize.U
+          }.otherwise {
+            state := sWriteReturn
+          }
         }
 
         when(io.tl.a.fire) {
