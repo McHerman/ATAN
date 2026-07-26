@@ -68,7 +68,14 @@ package object ATA8 {
     generationWidth: Int = 0,
   )
 
-  /** Embedded RISC-V core (mcc) integration parameters. */
+  /** Embedded RISC-V core (mcc) integration parameters.
+    *
+    * sharedSpmBase = 0: the compiler emits buffer pointers with no offset
+    * whatsoever, assuming they route directly to the shared SPM (ATAN's
+    * tier-0 scratchpad) — see mcc/test/programs_rv32/riscv-extrasmall.ll.
+    * semBase = 0x4000 is likewise hardcoded in the compiler; changing it
+    * here would desync from already-compiled RISC-V binaries.
+    */
   case class MccParams(
     enabled:      Boolean = false,
     baseAddr:     Long    = 0x80000000L,
@@ -76,7 +83,7 @@ package object ATA8 {
     imemWords:    Int     = 4096,
     dataSpmWords: Int     = 1024,
     dataSpmBase:  Int     = 0x0000,
-    sharedSpmBase: Int    = 0x2000,
+    sharedSpmBase: Int    = 0x0000,
     semBase:      Int     = 0x4000,
   ) {
     val addrBits: Int      = log2Ceil(imemWords * 4)
