@@ -28,16 +28,16 @@ package object ATA8 {
 
   /** Interconnect / TileLink-ish bus dimensions. */
   case class BusParams(
-    dataBusSize:    Int = 64,   // bytes per TileLink beat
+    dataBusSize:    Int = 8,    // bytes per TileLink beat
     addrWidth:      Int = 24,
     sourceWidth:    Int = 8,    // covers TLXbar ID ranges: 10 ids/master rounded to 16
-    axiStreamWidth: Int = 128,  // bits per host-facing AXI-Stream tdata word
+    axiStreamWidth: Int = 64,   // bits per host-facing AXI-Stream tdata word
   )
 
   /** Arithmetic / accumulator datapath widths. */
   case class DatapathParams(
     arithDataWidth: Int = 8,
-    accDataWidth:   Int = 32,
+    accDataWidth:   Int = 8,
     modeWidth:      Int = 1,
   )
 
@@ -45,7 +45,7 @@ package object ATA8 {
   case class SystolicParams(
     grainDim:      Int = 1,
     sysDim:        Int = 1,
-    arrayDim:      Int = 16,   // PE lanes per side of a PEArray tile
+    arrayDim:      Int = 8,    // PE lanes per side of a PEArray tile
     grainFIFOSize: Int = 64,
     grainACCUSize: Int = 64,
   )
@@ -158,18 +158,22 @@ package object ATA8 {
   }
 
   object Configuration {
+    // The pre-refactor 8x8 configuration: dataBusSize tightly coupled to
+    // arrayDim (one PE lane's byte per bus lane) and accDataWidth == 8 (no
+    // separate accumulator width, i.e. accumulation quantized to 8 bits
+    // internally). Most of the test suite is still implicitly written
+    // against this shape, so it's the default.
     def default(): Configuration = Configuration()
     def test():    Configuration = default()
 
-    // The pre-refactor 8x8 configuration: dataBusSize tightly coupled to
-    // arrayDim (one PE lane's byte per bus lane) and accDataWidth == 8 (no
-    // separate accumulator width). Kept around so tests that exercise this
-    // exact old coupling (e.g. TLScratchpadHandlerTest) don't have to
-    // hand-roll their own copy of it.
-    def legacy8x8(): Configuration = Configuration(
-      bus      = BusParams(dataBusSize = 8, axiStreamWidth = 64),
-      data     = DatapathParams(accDataWidth = 8),
-      systolic = SystolicParams(arrayDim = 8),
+    // The larger, decoupled-bus-vs-array-size configuration (16x16 array,
+    // 512-bit bus, 32-bit accumulator, 128-bit AXI-Stream) -- opt in to this
+    // explicitly in the handful of tests (and the real synthesis target)
+    // that actually exercise it.
+    def large16x16(): Configuration = Configuration(
+      bus      = BusParams(dataBusSize = 64, axiStreamWidth = 128),
+      data     = DatapathParams(accDataWidth = 32),
+      systolic = SystolicParams(arrayDim = 16),
     )
   }
 }
