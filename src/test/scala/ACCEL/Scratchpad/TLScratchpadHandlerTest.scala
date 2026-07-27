@@ -8,7 +8,8 @@ import org.scalatest.matchers.must.Matchers
 class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   val maxCycles = 500
-  implicit val c: Configuration = Configuration.default()
+
+  implicit val c: Configuration = Configuration.legacy8x8()
 
   def waitFor(step: () => Unit)(cond: => Boolean, msg: String): Unit = {
     var cycles = 0
@@ -127,9 +128,10 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.tl.a.valid.poke(true.B)
 
       dut.io.tl.a.ready.expect(true.B)
-      dut.clock.step()
+      dut.clock.step()   // sIdle -> sReadLock
 
       dut.io.tl.a.valid.poke(false.B)
+      dut.io.tl.d.ready.poke(true.B)
 
       dut.io.rMem.get.request.valid.expect(true.B)
       dut.io.rMem.get.request.bits.addr.get.expect(0x0030.U)
@@ -139,15 +141,23 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
       }
       dut.io.rMem.get.response.valid.poke(true.B)
       dut.io.rMem.get.request.ready.poke(true.B)
-      dut.io.tl.d.ready.poke(true.B)
+
+      // The scratchpad response is latched (respValid/respData) rather than
+      // passed straight through -- so it shows up on tl.d one cycle after
+      // the request that produced it fires, not the same cycle.
+      dut.io.tl.d.valid.expect(false.B)
+
+      dut.clock.step()   // request fires -> response latched
+
+      dut.io.rMem.get.response.valid.poke(false.B)
+      dut.io.rMem.get.request.ready.poke(false.B)
 
       dut.io.tl.d.valid.expect(true.B)
       dut.io.tl.d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
       dut.io.tl.d.bits.size.expect(8.U)
 
-      dut.clock.step()
+      dut.clock.step()   // tl.d fires -> back to sIdle
 
-      dut.io.rMem.get.response.valid.poke(false.B)
       dut.io.tl.d.valid.expect(false.B)
     }
   }
@@ -171,24 +181,32 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.tl.a.valid.poke(true.B)
 
       dut.io.tl.a.ready.expect(true.B)
-      dut.clock.step()
+      dut.clock.step()   // sIdle -> sReadLock
 
       dut.io.tl.a.valid.poke(false.B)
       dut.io.rMem.get.request.ready.poke(true.B)
       dut.io.tl.d.ready.poke(true.B)
 
-      // beat 0: addr=0x0040
+      // beat 0: addr=0x0040 requested; response latches this cycle, shows
+      // up on tl.d one cycle later (see "single-beat Get read").
       dut.io.rMem.get.request.valid.expect(true.B)
       dut.io.rMem.get.request.bits.addr.get.expect(0x0040.U)
       for (i <- 0 until c.dataBusSize) {
         dut.io.rMem.get.response.bits.readData(i).poke(0x0A.U)
       }
       dut.io.rMem.get.response.valid.poke(true.B)
+      dut.io.tl.d.valid.expect(false.B)
 
+      dut.clock.step()   // beat 0 request fires -> response latched, next request blocked (outstanding)
+
+      dut.io.rMem.get.response.valid.poke(false.B)
+      dut.io.rMem.get.request.valid.expect(false.B) // beat 1 not requested yet -- beat 0 still in flight
       dut.io.tl.d.valid.expect(true.B)
       dut.io.tl.d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
+      // d.ready is still true from before, so tl.d.fire also happens this
+      // cycle, draining beat 0 and clearing `outstanding` for the edge below.
 
-      dut.clock.step()
+      dut.clock.step()   // beat 0 drained -> outstanding clears -> beat 1 request now valid
 
       // beat 1: addr=0x0048
       dut.io.rMem.get.request.valid.expect(true.B)
@@ -196,13 +214,19 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
       for (i <- 0 until c.dataBusSize) {
         dut.io.rMem.get.response.bits.readData(i).poke(0x0B.U)
       }
+      dut.io.rMem.get.response.valid.poke(true.B)
+      dut.io.tl.d.valid.expect(false.B) // beat 0 already drained; beat 1 not latched yet
 
-      dut.io.tl.d.valid.expect(true.B)
-      dut.io.tl.d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
-
-      dut.clock.step()
+      dut.clock.step()   // beat 1 request fires -> response latched
 
       dut.io.rMem.get.response.valid.poke(false.B)
+      dut.io.tl.d.valid.expect(true.B)
+      dut.io.tl.d.bits.opcode.expect(TilelinkOpcodes.AccessAckData)
+      // beatCnt reached 0 already (set on the previous edge), so this
+      // tl.d.fire returns straight to sIdle.
+
+      dut.clock.step()   // beat 1 tl.d fires -> back to sIdle
+
       dut.io.tl.d.valid.expect(false.B)
     }
   }
