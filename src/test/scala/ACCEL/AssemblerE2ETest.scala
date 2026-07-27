@@ -23,19 +23,14 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
   val n = 8
   val maxCycles = 200000
 
-  // 8x8-fixture-compatible config: arrayDim matches the existing n=8
-  // fixtures' problem size, while still exercising the refactored
-  // 32-bit accumulator / decoupled bus-vs-array-size datapath (the fixtures
-  // themselves were built for an 8x8 array and are not being regenerated at
-  // 16x16 here — see "End-to-end no arg" for the one real 16x16 case).
-  // dataBusSize/axiStreamWidth must be overridden together with arrayDim in
-  // a single Configuration(...) call since Configuration's require()s are
-  // checked on every intermediate .withX() copy.
-  def smallArrayConfig: Configuration = Configuration(
-    bus      = BusParams(dataBusSize = 32, axiStreamWidth = 64),
-    data     = DatapathParams(accDataWidth = 32),
-    systolic = SystolicParams(arrayDim = 8),
-  )
+  // These fixtures (input_8_*.eaac) were built against the pre-refactor
+  // hardware: an 8x8 array with dataBusSize == arrayDim and accDataWidth ==
+  // arithDataWidth (accumulation quantized to 8 bits internally, no
+  // dedicated wider accumulator). Their golden references were computed
+  // against that quantization, so they must run at Configuration.legacy8x8()
+  // -- not a decoupled-but-small config -- or the expected values won't
+  // match what the hardware actually produces.
+  def smallArrayConfig: Configuration = Configuration.legacy8x8()
 
   // ── Test matrix (same as ATA8Test) ────────────────────────────────────
 
@@ -181,11 +176,12 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     stepN(dut.clock)
   }
 
-  "End-to-end no arg" in {
-    // Full-size case: runs at the real target Configuration (16x16 array,
-    // 512-bit bus, 32-bit accumulator, 128-bit AXI-Stream). The program
-    // embeds both matmul operands as constants, so no AXIST_inData feed is
-    // needed here.
+
+  "End-to-end 16x16 single input" in {
+    // Real target Configuration (16x16 array, 512-bit bus, 32-bit
+    // accumulator, 128-bit AXI-Stream). The program loads a single input
+    // tensor from the host, multiplies it against an embedded constant, and
+    // stores the (16x16xi32) result.
     val n16 = 16
     implicit val testConfig: Configuration = Configuration.default()
       .withBus(_.copy(sourceWidth = 8))
@@ -201,7 +197,7 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     ))
 
     // Phase 1: Build FlatBuffer program
-    val inputPath = "/home/karlhk/dtu/Thesis/hardware/ATAN/test/input_16x16_no_arg.eaac"
+    val inputPath = "/home/karlhk/dtu/Thesis/hardware/ATAN/test/input_16x16.eaac"
 
     val bytes = Files.readAllBytes(Paths.get(inputPath))
     val buf = ByteBuffer.wrap(bytes)
@@ -221,12 +217,15 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     case class Tensor(shape: Seq[Int], element_type: String, data: Seq[Int])
     case class ModelIO(inputs: Seq[Tensor], outputs: Seq[Tensor])
 
-    val jsonStr = Source.fromFile("/home/karlhk/dtu/Thesis/hardware/ATAN/test/input_16x16_no_arg.reference.json").mkString
+    val jsonStr = Source.fromFile("/home/karlhk/dtu/Thesis/hardware/ATAN/test/input_16x16.reference.json").mkString
 
     val parsed = for {
       json <- parse(jsonStr)
       model <- json.as[ModelIO]
     } yield model
+
+    val inputArrays: Seq[Seq[Int]] =
+      parsed.toOption.get.inputs.map(_.data)
 
     val outputArrays: Seq[Seq[Int]] =
       parsed.toOption.get.outputs.map(_.data)
@@ -235,7 +234,7 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     simulate(new ATA8(testConfig, msCfg)) { dut =>
       totalCycles = 0L
 
-      // Preload memory for each preload entry
+      // Preload memory for each preload entry (the constant operand)
       fn.preloads.foreach { preload =>
         preloadMem(dut, preload, msCfg)
       }
@@ -247,6 +246,17 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
 
       val execStart = totalCycles
 
+      // Feed the single input tensor via AXIST_inData; rows are reversed to
+      // match the output access pattern (((n-1)-row)*n+col), consistent
+      // with "End-to-end with arguments".
+      inputArrays.foreach { inputArr =>
+        val rows = (0 until n16).map { i =>
+          val rowData = (0 until n16).map(col => inputArr(((n16 - 1) - i) * n16 + col))
+          packRow(rowData)
+        }
+        feedLoadData(dut, rows)
+      }
+
       // Collect output from AXIST_out
       val outputRows = collectStoreData(dut, n16)
       val execEnd = totalCycles
@@ -254,26 +264,33 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
       println(f"[E2E] total cycles     : ${totalCycles}%d")
       println(f"[E2E] execution cycles : ${execEnd - execStart}%d (first load beat → last store beat)")
 
-      // Phase 4: Verify against golden reference.
-      //
-      // The hardware drains the systolic array's rightmost column, which
-      // completes rows in reverse (weight-stationary load order + column-wise
-      // drain means the last-loaded row surfaces first). The golden reference
-      // is stored in natural row order, so row `row` off the wire corresponds
-      // to reference row `(n16-1)-row`. This convention is unaffected by
-      // array size/bus width and is not something this refactor changes.
+      // Phase 4: Verify against a directly-recomputed expected value rather
+      // than a naive (n16-1-row) reindex of the reference JSON. The WS
+      // wavefront convention means PE column k ends up stationary with
+      // weight row (n16-1-k) (confirmed in GrainWideBeatTest/Grain-level
+      // tests), and the natural tier0 load/store order row-reverses the fed
+      // activation tensor -- so the hardware computes
+      //   hw[row][col] = sum_k A[n16-1-row][k] * B[n16-1-k][col]
+      // (signed int8 x int8 -> int32, matching the now-signed PE
+      // multiplier), which is *not* the same as reindexing a plain A @ B
+      // reference by row.
+      def toSignedByte(v: Int): Int = { val b = v & 0xFF; if (b >= 128) b - 256 else b }
+      val constantBytes = fn.preloads.head.data
+      val A = Array.tabulate(n16, n16)((r, c) => toSignedByte(inputArrays.head(r * n16 + c)))
+      val B = Array.tabulate(n16, n16)((r, c) => constantBytes(r * n16 + c).toInt)
+
       for (row <- 0 until n16) {
         val got = unpackRow(outputRows(row))
         for (col <- 0 until n16) {
-          val exp = outputArrays(0)(((n16 - 1) - row) * n16 + col)
+          val exp = (0 until n16).map(k => A(n16 - 1 - row)(k) * B(n16 - 1 - k)(col)).sum
           if (got(col) != exp) println(f"DEBUG Mismatch at ($row,$col): got ${got(col)}, expected $exp")
         }
       }
       for (row <- 0 until n16) {
         val got = unpackRow(outputRows(row))
         for (col <- 0 until n16) {
-          assert(got(col) == (outputArrays(0)(((n16 - 1) - row) * n16 + col)),
-            s"Mismatch at ($row,$col): got ${got(col)}, expected ${outputArrays(0)(((n16 - 1) - row) * n16 + col)}")
+          val exp = (0 until n16).map(k => A(n16 - 1 - row)(k) * B(n16 - 1 - k)(col)).sum
+          assert(got(col) == exp, s"Mismatch at ($row,$col): got ${got(col)}, expected $exp")
         }
       }
     }

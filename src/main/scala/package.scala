@@ -160,5 +160,16 @@ package object ATA8 {
   object Configuration {
     def default(): Configuration = Configuration()
     def test():    Configuration = default()
+
+    // The pre-refactor 8x8 configuration: dataBusSize tightly coupled to
+    // arrayDim (one PE lane's byte per bus lane) and accDataWidth == 8 (no
+    // separate accumulator width). Kept around so tests that exercise this
+    // exact old coupling (e.g. TLScratchpadHandlerTest) don't have to
+    // hand-roll their own copy of it.
+    def legacy8x8(): Configuration = Configuration(
+      bus      = BusParams(dataBusSize = 8, axiStreamWidth = 64),
+      data     = DatapathParams(accDataWidth = 8),
+      systolic = SystolicParams(arrayDim = 8),
+    )
   }
 }
