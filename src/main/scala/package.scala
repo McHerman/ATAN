@@ -28,9 +28,10 @@ package object ATA8 {
 
   /** Interconnect / TileLink-ish bus dimensions. */
   case class BusParams(
-    dataBusSize: Int = 8,
-    addrWidth:   Int = 16,
-    sourceWidth: Int = 8,   // covers TLXbar ID ranges: 10 ids/master rounded to 16
+    dataBusSize:    Int = 8,    // bytes per TileLink beat
+    addrWidth:      Int = 24,
+    sourceWidth:    Int = 8,    // covers TLXbar ID ranges: 10 ids/master rounded to 16
+    axiStreamWidth: Int = 64,   // bits per host-facing AXI-Stream tdata word
   )
 
   /** Arithmetic / accumulator datapath widths. */
@@ -44,6 +45,7 @@ package object ATA8 {
   case class SystolicParams(
     grainDim:      Int = 1,
     sysDim:        Int = 1,
+    arrayDim:      Int = 8,    // PE lanes per side of a PEArray tile
     grainFIFOSize: Int = 64,
     grainACCUSize: Int = 64,
   )
@@ -130,6 +132,7 @@ package object ATA8 {
     def bufferWritePorts = memory.bufferWritePorts
     def grainDim         = systolic.grainDim
     def sysDim           = systolic.sysDim
+    def arrayDim         = systolic.arrayDim
     def grainFIFOSize    = systolic.grainFIFOSize
     def grainACCUSize    = systolic.grainACCUSize
     def arithDataWidth   = data.arithDataWidth
@@ -150,6 +153,7 @@ package object ATA8 {
     def addrWidth           = bus.addrWidth
     def dataBusSize         = bus.dataBusSize
     def sourceWidth         = bus.sourceWidth
+    def axiStreamWidth      = bus.axiStreamWidth
 
     // ── Group-level overriders (less verbose than nested .copy chains) ───
     def withBus(f: BusParams => BusParams):                  Configuration = copy(bus       = f(bus))
@@ -167,12 +171,33 @@ package object ATA8 {
 
     require(accDataWidth >= arithDataWidth, "accDataWidth must be >= arithDataWidth")
     require(accDataWidth % 8 == 0, "accDataWidth must be a multiple of 8")
+    require(dataBusSize % (arrayDim * arithDataWidth / 8) == 0,
+      "dataBusSize must divide evenly into arrayDim*arithDataWidth/8-byte sub-rows (X/Y beat deserialization)")
+    require(dataBusSize == arrayDim * accDataBytes,
+      "dataBusSize must exactly equal arrayDim*accDataBytes so one drained output row is exactly one TL beat")
+    require((dataBusSize * 8) % axiStreamWidth == 0,
+      "dataBusSize*8 must divide evenly by axiStreamWidth (AXI-Stream beat assembly)")
     require(nSemaphores > 0, "nSemaphores must be positive")
     require(semaphoreGenerationWidth >= 0, "semaphoreGenerationWidth must be non-negative")
   }
 
   object Configuration {
+    // The pre-refactor 8x8 configuration: dataBusSize tightly coupled to
+    // arrayDim (one PE lane's byte per bus lane) and accDataWidth == 8 (no
+    // separate accumulator width, i.e. accumulation quantized to 8 bits
+    // internally). Most of the test suite is still implicitly written
+    // against this shape, so it's the default.
     def default(): Configuration = Configuration()
     def test():    Configuration = default()
+
+    // The larger, decoupled-bus-vs-array-size configuration (16x16 array,
+    // 512-bit bus, 32-bit accumulator, 128-bit AXI-Stream) -- opt in to this
+    // explicitly in the handful of tests (and the real synthesis target)
+    // that actually exercise it.
+    def large16x16(): Configuration = Configuration(
+      bus      = BusParams(dataBusSize = 64, axiStreamWidth = 128),
+      data     = DatapathParams(accDataWidth = 32),
+      systolic = SystolicParams(arrayDim = 16),
+    )
   }
 }

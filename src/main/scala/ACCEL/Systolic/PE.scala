@@ -6,9 +6,9 @@ import chisel3.util.HasBlackBoxInline
 
 class DSPMultiplier(width: Int) extends BlackBox with HasBlackBoxInline {
   val io = IO(new Bundle {
-    val a = Input(UInt(width.W))
-    val b = Input(UInt(width.W))
-    val result = Output(UInt((2 * width).W)) // Output width is twice the input width
+    val a = Input(SInt(width.W))
+    val b = Input(SInt(width.W))
+    val result = Output(SInt((2 * width).W)) // Output width is twice the input width
   })
 
   // The purpose of this module is to ensure that Vivado instantiates DSP's
@@ -18,9 +18,9 @@ class DSPMultiplier(width: Int) extends BlackBox with HasBlackBoxInline {
         |module DSPMultiplier #(
         |    parameter WIDTH = $width
         |)(
-        |    input [WIDTH-1:0] a,
-        |    input [WIDTH-1:0] b,
-        |    output [2*WIDTH-1:0] result // Adjusted output width
+        |    input signed [WIDTH-1:0] a,
+        |    input signed [WIDTH-1:0] b,
+        |    output signed [2*WIDTH-1:0] result // Adjusted output width
         |);
         |    assign result = a * b; // Perform multiplication
         |endmodule
@@ -47,8 +47,8 @@ class PE(implicit c: Configuration) extends Module {
   XReg := io.x.X
   io.xOut.X := XReg
 
-  multiplier.io.a := 0.U
-  multiplier.io.b := 0.U
+  multiplier.io.a := 0.S
+  multiplier.io.b := 0.S
 
   switch(io.ctrl.state) {
     is(0.U) { // Weight stationary
@@ -57,14 +57,14 @@ class PE(implicit c: Configuration) extends Module {
         io.yOut.Y := YReg
       }.otherwise{
         io.yOut.Y := DataReg
-        multiplier.io.a := io.x.X
-        multiplier.io.b := YReg
+        multiplier.io.a := io.x.X.asSInt
+        multiplier.io.b := YReg.asSInt
 
-        DataReg := (multiplier.io.result +& io.y.Y)(c.accDataWidth - 1, 0)
+        DataReg := (multiplier.io.result +& io.y.Y.asSInt).asUInt(c.accDataWidth - 1, 0)
       }
     }
     is(1.U) { // Output stationary
-      /* 
+      /*
       when(io.ctrl.shift){
         DataReg := io.y.Y
         io.yOut.Y := DataReg
@@ -87,11 +87,11 @@ class PE(implicit c: Configuration) extends Module {
         DataReg := io.y.Y
         io.yOut.Y := DataReg
       }.otherwise{
-        multiplier.io.a := io.x.X
+        multiplier.io.a := io.x.X.asSInt
         //multiplier.io.b := io.y.Y(c.arithDataWidth - 1, 0)
-        multiplier.io.b := io.y.Y
+        multiplier.io.b := io.y.Y.asSInt
 
-        DataReg := (multiplier.io.result +& DataReg)(c.accDataWidth - 1, 0)
+        DataReg := (multiplier.io.result +& DataReg.asSInt).asUInt(c.accDataWidth - 1, 0)
 
         YReg := io.y.Y(c.arithDataWidth - 1, 0)
         io.yOut.Y := YReg

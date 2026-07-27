@@ -13,12 +13,14 @@ class LoadController(implicit c: Configuration) extends Module {
 
   val io = IO(new Bundle {
     val instructionStream = new Readport(new LoadInst)
-    val AXIST             = Flipped(new AXIST_2(64, 2, 1, 1, 1))
+    val AXIST             = Flipped(new AXIST_2(c.axiStreamWidth, 2, 1, 1, 1))
     val writeport         = new TilelinkPort(c.tlBus)
     val semaphoreIF       = new TilelinkPort(c.tlSemBus)
     val debug             = new LoadDebug
   })
 
+  // Number of AXI-Stream words that must be assembled into one TileLink beat.
+  val wordsPerBeat = (c.dataBusSize * 8) / c.axiStreamWidth
 
   val dmaConf = TLDMAConfig(read = false, write = true, semaphore = true)
   val ReadDMA = Module(new TLDMA(dmaConf, sourceId = 1))
@@ -33,7 +35,7 @@ class LoadController(implicit c: Configuration) extends Module {
   // FIFO between AXIST and DMA dataIn so the AXIST handshake doesn't see
   // tl.a.ready combinationally through the TileLink xbar.
   class FifoBeat extends Bundle {
-    val data = UInt(64.W)
+    val data = UInt(c.axiStreamWidth.W)
     val last = Bool()
   }
   val fifo = Module(new Queue(new FifoBeat, entries = 4, pipe = false, flow = false))
@@ -44,7 +46,13 @@ class LoadController(implicit c: Configuration) extends Module {
   io.AXIST.tready       := fifo.io.enq.ready
 
   fifo.io.deq.ready := false.B
- 
+
+  // Assembles wordsPerBeat sequential AXI-Stream words into one full
+  // dataBusSize*8-bit TileLink beat before handing it to the DMA.
+  val assembled = Reg(Vec(wordsPerBeat, UInt(c.axiStreamWidth.W)))
+  val wordIdx   = RegInit(0.U(log2Ceil(wordsPerBeat + 1).W))
+  val beatReady = wordIdx === wordsPerBeat.U
+
   ReadDMA.io.interface.descriptor.valid := false.B
   ReadDMA.io.interface.descriptor.bits := DontCare
   ReadDMA.io.interface.response.ready := false.B
@@ -91,11 +99,21 @@ class LoadController(implicit c: Configuration) extends Module {
         StateReg := 2.U
       }
     }
-    is(2.U) { // Drain FIFO into DMA, wait for completion
-      ReadDMA.io.dataIn.get.request.ready          := fifo.io.deq.valid
-      fifo.io.deq.ready                            := ReadDMA.io.dataIn.get.request.valid
-      ReadDMA.io.dataIn.get.response.valid         := fifo.io.deq.valid
-      ReadDMA.io.dataIn.get.response.bits.readData := fifo.io.deq.bits.data
+    is(2.U) { // Assemble AXI-Stream words into TileLink beats, drain into DMA, wait for completion
+      fifo.io.deq.ready := !beatReady
+
+      when(fifo.io.deq.fire) {
+        assembled(wordIdx) := fifo.io.deq.bits.data
+        wordIdx := wordIdx + 1.U
+      }
+
+      ReadDMA.io.dataIn.get.request.ready          := beatReady
+      ReadDMA.io.dataIn.get.response.valid         := beatReady
+      ReadDMA.io.dataIn.get.response.bits.readData := assembled.asUInt
+
+      when(ReadDMA.io.dataIn.get.request.fire) {
+        wordIdx := 0.U
+      }
 
       ReadDMA.io.interface.response.ready := true.B
 

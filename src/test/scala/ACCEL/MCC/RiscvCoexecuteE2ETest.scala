@@ -34,6 +34,8 @@ class RiscvCoexecuteE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     .copy(riscv = MccParams(enabled = true))
 
   val msCfg = MemSystemConfig.default().copy(
+    dataBusSize = testConfig.dataBusSize,
+    addrWidth   = testConfig.addrWidth,
     sourceWidth = testConfig.sourceWidth,
     semGenWidth = testConfig.semaphoreGenerationWidth,
   )
@@ -137,7 +139,6 @@ class RiscvCoexecuteE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     val initData = mcc.MccHexReader(hexPath)
 
     val asm = new Assembler(AssemblerConfig(
-      dataBusBytes             = testConfig.dataBusSize,
       semaphoreGenerationWidth = testConfig.semaphoreGenerationWidth,
     ))
     val assembled = asm.assemble(ByteBuffer.wrap(Files.readAllBytes(Paths.get(eaacPath))))
@@ -157,7 +158,7 @@ class RiscvCoexecuteE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     val inputArrays: Seq[Seq[Int]]  = parsed.toOption.get.inputs.map(_.data)
     val outputArrays: Seq[Seq[Int]] = parsed.toOption.get.outputs.map(_.data)
 
-    simulate(new AtanMccDUT(testConfig, mccInitData = initData)) { dut =>
+    simulate(new AtanMccDUT(testConfig, memCfgBase = msCfg, mccInitData = initData)) { dut =>
       totalCycles = 0L
 
       dut.reset.poke(true.B)

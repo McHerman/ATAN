@@ -8,8 +8,8 @@ class ATA8(config: Configuration, memCfgBase: MemSystemConfig = MemSystemConfig.
   implicit val c: Configuration = config
 
   val io = IO(new Bundle {
-    val AXIST_out     = new AXIST_2(64, 2, 1, 1, 1)
-    val AXIST_inData  = Flipped(new AXIST_2(64, 2, 1, 1, 1))
+    val AXIST_out     = new AXIST_2(c.axiStreamWidth, 2, 1, 1, 1)
+    val AXIST_inData  = Flipped(new AXIST_2(c.axiStreamWidth, 2, 1, 1, 1))
     val AXIST_inInst  = Flipped(new AXIST_2(128, 2, 1, 1, 1))
     val axi_s0        = Flipped(new CustomAXI4Lite(32, 32))
 
@@ -25,6 +25,10 @@ class ATA8(config: Configuration, memCfgBase: MemSystemConfig = MemSystemConfig.
       memCfgBase.tiers.updated(0, memCfgBase.tiers(0).copy(mccBus = Some(c.riscv.tlBus)))
     } else memCfgBase.tiers,
   )
+  require(config.dataBusSize == mc.dataBusSize,
+    s"Configuration.dataBusSize (${config.dataBusSize}) must equal MemSystemConfig.dataBusSize (${mc.dataBusSize})")
+  require(config.addrWidth == mc.addrWidth,
+    s"Configuration.addrWidth (${config.addrWidth}) must equal MemSystemConfig.addrWidth (${mc.addrWidth})")
   private val nDMAs = mc.tiers.length - 1
   private val nExeSemPorts = 3 * c.grainDim  // writeSem(grainDim) + readSem(2 * grainDim)
   private val nSemPorts = nExeSemPorts + 1 + 1 + 2 * nDMAs + (if (c.riscv.enabled) 1 else 0)
@@ -141,7 +145,7 @@ class ATA8(config: Configuration, memCfgBase: MemSystemConfig = MemSystemConfig.
 
 object ATA8 extends App {
   _root_.circt.stage.ChiselStage.emitSystemVerilogFile(
-    new ATA8(Configuration.default()),
+    new ATA8(Configuration.large16x16()),
     firtoolOpts = Array("-disable-all-randomization", "-strip-debug-info")
   )
 }

@@ -7,11 +7,14 @@ import chisel3.util._
 class StoreController(implicit c: Configuration) extends Module {
   val io = IO(new Bundle {
     val instructionStream = new Readport(new StoreInst)
-    val AXIST = new AXIST_2(64, 2, 1, 1, 1)
+    val AXIST = new AXIST_2(c.axiStreamWidth, 2, 1, 1, 1)
     val readport = new TilelinkPort(c.tlBus)
     val semaphoreIF = new TilelinkPort(c.tlSemBus)
     val debug = new StoreDebug
   })
+
+  // Number of AXI-Stream words a single TileLink beat must be split into.
+  val wordsPerBeat = (c.dataBusSize * 8) / c.axiStreamWidth
 
   val dmaConf = TLDMAConfig(read = true, write = false, semaphore = true)
   val StoreDMA = Module(new TLDMA(dmaConf, sourceId = 2))
@@ -31,6 +34,12 @@ class StoreController(implicit c: Configuration) extends Module {
   StoreDMA.io.interface.response.ready := false.B
 
   StoreDMA.io.dataOut.get.ready := false.B
+
+  // Splits one dataBusSize*8-bit TileLink beat into wordsPerBeat sequential
+  // axiStreamWidth-bit AXI-Stream words.
+  val beatWords = Reg(Vec(wordsPerBeat, UInt(c.axiStreamWidth.W)))
+  val wordIdx   = RegInit(0.U(log2Ceil(wordsPerBeat + 1).W))
+  val haveBeat  = RegInit(false.B)
 
   val reg = Reg(new StoreInst)
   val StateReg = RegInit(0.U(4.W))
@@ -70,16 +79,32 @@ class StoreController(implicit c: Configuration) extends Module {
         StateReg := 2.U
       }
     }
-    is(2.U) { // Stream DMA data out over AXIST, wait for completion
+    is(2.U) { // Split DMA beat into AXI-Stream words, stream out, wait for completion
       StoreDMA.io.interface.response.ready := true.B
 
-      StoreDMA.io.dataOut.get.ready := io.AXIST.tready
+      StoreDMA.io.dataOut.get.ready := !haveBeat
 
-      when(StoreDMA.io.dataOut.get.valid) {
+      when(StoreDMA.io.dataOut.get.fire) {
+        beatWords := VecInit(Seq.tabulate(wordsPerBeat)(i =>
+          StoreDMA.io.dataOut.get.bits((i + 1) * c.axiStreamWidth - 1, i * c.axiStreamWidth)))
+        wordIdx  := 0.U
+        haveBeat := true.B
+      }
+
+      when(haveBeat) {
         io.AXIST.tvalid := true.B
-        io.AXIST.tdata := StoreDMA.io.dataOut.get.bits
-        io.AXIST.tkeep := "hff".U
-        io.AXIST.tstrb := "hff".U
+        io.AXIST.tdata  := beatWords(wordIdx)
+        io.AXIST.tkeep  := Fill(c.axiStreamWidth / 8, 1.U(1.W))
+        io.AXIST.tstrb  := Fill(c.axiStreamWidth / 8, 1.U(1.W))
+
+        when(io.AXIST.tready) {
+          when(wordIdx === (wordsPerBeat - 1).U) {
+            wordIdx  := 0.U
+            haveBeat := false.B
+          }.otherwise {
+            wordIdx := wordIdx + 1.U
+          }
+        }
       }
 
       when(StoreDMA.io.interface.response.fire) {

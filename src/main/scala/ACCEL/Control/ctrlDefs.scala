@@ -136,7 +136,7 @@ class SemProgInst(implicit c: Configuration) extends InstBase with Decodable {
 class SysOP(implicit c: Configuration) extends Bundle {
   val mode = UInt(1.W)
   val size = UInt(8.W)
-  val sizes = Vec(c.grainDim, UInt(log2Ceil(c.dataBusSize + 1).W))
+  val sizes = Vec(c.grainDim, UInt(log2Ceil(c.arrayDim + 1).W))
 }
 
 class DMARead(implicit c: Configuration) extends Bundle {

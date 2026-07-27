@@ -7,28 +7,31 @@ import chisel3.util._
 class XFile(implicit c: Configuration) extends Module {
   var addr_width = log2Ceil(c.grainFIFOSize)
   val io = IO(new Bundle {
-    val Out = Output(Vec(c.dataBusSize, new PEX(c.arithDataWidth)))
+    val Out = Output(Vec(c.arrayDim, new PEX(c.arithDataWidth)))
     val Activate = Input(Bool())
     val ActivateOut = Output(Bool())
 
-    val Memport = Flipped(Decoupled(Vec(c.dataBusSize,UInt(8.W)))) //TODO: change name 
-    val size = Input(UInt(log2Ceil(c.dataBusSize + 1).W))
+    val Memport = Flipped(Decoupled(Vec(c.dataBusSize,UInt(8.W)))) //TODO: change name
+    val size = Input(UInt(log2Ceil(c.arrayDim + 1).W))
   })
 
-  val moduleArray = Seq.fill(c.dataBusSize)(Module(new BufferFIFO(c.grainFIFOSize, UInt(8.W))))
+  val unpacker = Module(new BeatUnpacker())
+  unpacker.io.beatIn <> io.Memport
 
-  val XACT = RegInit(VecInit.fill(c.dataBusSize)(0.U(1.W)))
+  val moduleArray = Seq.fill(c.arrayDim)(Module(new BufferFIFO(c.grainFIFOSize, UInt(8.W))))
 
-  moduleArray.zipWithIndex.foreach{case (module,i) => 
+  val XACT = RegInit(VecInit.fill(c.arrayDim)(0.U(1.W)))
+
+  moduleArray.zipWithIndex.foreach{case (module,i) =>
     if(i == 0){
       XACT(0) := io.Activate
     }else{
       XACT(i) := XACT(i-1)
     }
 
-    module.io.WriteData.valid := io.Memport.valid
-    module.io.WriteData.bits := io.Memport.bits(i)
-    
+    module.io.WriteData.valid := unpacker.io.subRowValid
+    module.io.WriteData.bits := unpacker.io.subRow(i)
+
     module.io.ReadData.request.valid := false.B
     module.io.ReadData.request.bits := DontCare
 
@@ -44,7 +47,7 @@ class XFile(implicit c: Configuration) extends Module {
   }
 
   io.ActivateOut := XACT.last
-  io.Memport.ready := VecInit(moduleArray.map(_.io.WriteData.ready)).reduceTree(_ && _)
-  
+  unpacker.io.subRowReady := VecInit(moduleArray.map(_.io.WriteData.ready)).reduceTree(_ && _)
+
 }
 

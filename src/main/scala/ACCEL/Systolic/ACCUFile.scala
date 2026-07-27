@@ -6,13 +6,13 @@ import chisel3.util._
 class ACCUFile(val hasDelay: Boolean)(implicit c: Configuration) extends Module {
   var addr_width = log2Ceil(c.grainACCUSize)
   val io = IO(new Bundle {
-    val In = Input(Vec(c.dataBusSize, new PEY(c.accDataWidth)))
+    val In = Input(Vec(c.arrayDim, new PEY(c.accDataWidth)))
     val Activate = Input(Bool())
     val ActivateOut = Output(Bool())
     val Shift = Input(Bool())
 
-    val Readport = Flipped(new Readport(Vec(c.dataBusSize,UInt(8.W))))
-    val size = Input(UInt(log2Ceil(c.dataBusSize + 1).W))
+    val Readport = Flipped(new Readport(Vec(c.arrayDim,UInt(c.accDataWidth.W))))
+    val size = Input(UInt(log2Ceil(c.arrayDim + 1).W))
 
     val State = Input(UInt(1.W))
   })
@@ -21,9 +21,9 @@ class ACCUFile(val hasDelay: Boolean)(implicit c: Configuration) extends Module 
   io.Readport.response.valid := true.B
   io.Readport.response.bits := DontCare
 
-  val moduleArray = Seq.fill(c.dataBusSize)(Module(new BufferFIFO(c.grainFIFOSize, UInt(c.arithDataWidth.W))))
+  val moduleArray = Seq.fill(c.arrayDim)(Module(new BufferFIFO(c.grainFIFOSize, UInt(c.accDataWidth.W))))
 
-  val ACCUAct    = RegInit(VecInit.fill(c.dataBusSize)(0.U(1.W)))
+  val ACCUAct    = RegInit(VecInit.fill(c.arrayDim)(0.U(1.W)))
   val activateIn = Wire(Bool())
   val ActDReg    = RegInit(false.B)
 

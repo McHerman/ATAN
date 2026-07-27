@@ -21,9 +21,9 @@ case class TierConfig(
  */
 case class MemSystemConfig(
   tiers:         Seq[TierConfig],
-  dataBusSize:   Int = 8,   // bytes per TileLink beat
+  dataBusSize:   Int = 64,  // bytes per TileLink beat
   arithDataWidth: Int = 8,  // bits per arithmetic element
-  addrWidth:     Int = 16,  // address bits
+  addrWidth:     Int = 24,  // address bits
   sourceWidth:   Int = 1,   // TileLink source-ID width
   semGenWidth:   Int = 0,   // bank-side semaphore generation width
 ) extends MemBusConfig {

@@ -18,13 +18,29 @@ import freechips.rocketchip.rocket.CoreInterrupts
  * are rebased here by subtracting `atanConfig.riscv.baseAddr` before
  * leaving this module.
  */
+// Minimal standalone MemBusConfig for mcc's own CPU-internal buses (imem/
+// dmem), which have nothing to do with the systolic array. Configuration
+// carries array-sizing invariants (dataBusSize == arrayDim*accDataBytes,
+// etc.) that don't apply to this narrow, fixed 32-bit CPU bus, so it can't
+// be reused here the way it is for the shared-scratchpad-facing side.
+case class CoreMemBusConfig(
+  dataBusSize:    Int,
+  addrWidth:      Int,
+  sourceWidth:    Int,
+  arithDataWidth: Int = 8,
+) extends MemBusConfig
+
 class MccWrapper(initData: Map[Int, BigInt] = Map.empty)(implicit atanConfig: Configuration) extends Module {
   private val rp = atanConfig.riscv
   require(rp.enabled, "MccWrapper requires atanConfig.riscv.enabled = true")
 
   implicit val p: Parameters          = Parameters.empty
   implicit val coreConf: mcc.common.MccCoreParams = mcc.common.MccCoreParams(xprlen = 32)
-  val coreBusConf: MemBusConfig       = Configuration(bus = rp.coreBusConf)
+  val coreBusConf: MemBusConfig       = CoreMemBusConfig(
+    dataBusSize = rp.coreBusConf.dataBusSize,
+    addrWidth   = rp.coreBusConf.addrWidth,
+    sourceWidth = rp.coreBusConf.sourceWidth,
+  )
 
   val io = IO(new Bundle {
     val dmem     = new TilelinkPort(rp.tlBus)

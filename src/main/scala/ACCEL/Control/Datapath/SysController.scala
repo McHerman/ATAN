@@ -108,7 +108,7 @@ class SysController(implicit c: Configuration) extends Module {
       val readySignals = VecInit(io.dmaRead.flatten.map(_.descriptor.ready))
       when(readySignals.reduceTree(_ && _)) {
         (reg.addrs zip io.dmaRead).foreach { case (addrs, dmaSeq) =>
-          val readSizes = VectorFillerFunctions.buildTree(reg.size, c.grainDim, c.dataBusSize)
+          val readSizes = VectorFillerFunctions.buildTree(reg.size, c.grainDim, c.arrayDim)
           (dmaSeq zip readSizes.zipWithIndex).foreach { case (dma, (size, index)) =>
             val addrSum = if (index == 0) 0.U else readSizes.take(index).reduce(_ + _)
             dma.descriptor.bits(0).addr := addrs.addr + addrSum
@@ -139,7 +139,7 @@ class SysController(implicit c: Configuration) extends Module {
     }
     is(3.U) { // Push to opbuffer and readBuffer
       when(opbuffer.io.WriteData.ready && readBuffer.io.WriteData.ready) {
-        val sizes = VectorFillerFunctions.buildTree(reg.size, c.grainDim, c.dataBusSize)
+        val sizes = VectorFillerFunctions.buildTree(reg.size, c.grainDim, c.arrayDim)
         opbuffer.io.WriteData.valid       := true.B
         opbuffer.io.WriteData.bits.mode   := reg.mode
         opbuffer.io.WriteData.bits.size   := sizes(0)
@@ -160,7 +160,7 @@ class SysController(implicit c: Configuration) extends Module {
     when(readySignals.reduceTree(_ && _)) {
       readBuffer.io.ReadData.request.valid := true.B
       val op         = readBuffer.io.ReadData.response.bits.readData
-      val writeSizes = VectorFillerFunctions.buildTree(op.size, c.grainDim, c.dataBusSize)
+      val writeSizes = VectorFillerFunctions.buildTree(op.size, c.grainDim, c.arrayDim)
       (io.dmaWrite zip writeSizes.zipWithIndex).foreach { case (dma, (size, index)) =>
         val addrSum = if (index == 0) 0.U else writeSizes.take(index).reduce(_ + _)
 
@@ -172,7 +172,7 @@ class SysController(implicit c: Configuration) extends Module {
         */
 
         dma.descriptor.bits(0).addr := op.addrPkg.addr + addrSum
-        dma.descriptor.bits(0).size := op.size * op.size 
+        dma.descriptor.bits(0).size := op.size * op.size * c.accDataBytes.U
         dma.descriptor.valid := true.B
 
         dma.descriptor.bits(0).semaphore.get.semEnable := op.addrPkg.sem.valid

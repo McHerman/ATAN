@@ -36,7 +36,7 @@ import State._
 class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) extends Module {
   implicit val cm: TLScratchConfig = config
 
-
+  // Narrow-TL-bus-to-wide-scratchpad byte muxing.
   def scatter(data: UInt, mask: UInt, addr: UInt)(implicit c: MemBusConfig, cm: TLScratchConfig): (Vec[UInt], Vec[Bool], UInt) = {
     val muxOut  = c.dataBusSize / cm.tlConfig.dataBusSize
     val tlBytes = cm.tlConfig.dataBusSize
@@ -64,7 +64,7 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
     }
   }
 
-  
+
   val io = IO(new Bundle {
     val tl   = Flipped(new TilelinkPort(config.tlConfig))
     val wMem = if (config.write) Some(Decoupled(new Writeport(
@@ -86,13 +86,14 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
 
   val state        = RegInit(sIdle)
   val beatCnt      = Reg(UInt(24.W))
+
+  // acceptRemaining decouples the amount of beats recieved from the beatCnt which counts beats written
+  val acceptRemaining = Reg(UInt(24.W))
   val firstBeat    = RegInit(false.B)
   val reg          = Reg(new TilelinkA(c.tlBus))
   val regValid     = RegInit(false.B)
   val originalData = Reg(UInt((config.tlConfig.dataBusSize * 8).W))
   val amoResult    = Reg(UInt((config.tlConfig.dataBusSize * 8).W))
-
-  val addrOld = RegNext(reg.address)
 
   switch(state) {
     is(sIdle) {
@@ -114,6 +115,8 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
               reg      := io.tl.a.bits
               regValid := io.tl.a.valid
               beatCnt  := io.tl.a.bits.size
+              // Beats still to arrive after this one (total minus the one just accepted).
+              acceptRemaining := io.tl.a.bits.size - config.tlConfig.dataBusSize.U
               state    := sWriteLock
             }
           }
@@ -135,7 +138,8 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
     val writeIF = io.wMem.get
     switch(state) {
       is(sWriteLock) {
-        io.tl.a.ready := writeIF.ready && beatCnt > config.tlConfig.dataBusSize.U
+        // To prevent deadlock, a.ready cannot depend of writeIF.ready
+        io.tl.a.ready := (!regValid || writeIF.fire) && acceptRemaining > 0.U
 
         if (config.atomic) {
           writeIF.valid := regValid && !HelperFunctions.checkAtomic(reg.address, io.reserveIn.get)
@@ -143,19 +147,17 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
           writeIF.valid := regValid
         }
 
-        /*
-        writeIF.bits.addr           := reg.address
-        writeIF.bits.data.writeData := reg.data.asTypeOf(Vec(c.dataBusSize, UInt(8.W)))
-        writeIF.bits.data.strb      := VecInit(reg.mask.asBools)
-        */
-
         val (data, mask, addr) = scatter(reg.data, reg.mask, reg.address)
 
-        writeIF.bits.addr           := addr 
-        writeIF.bits.data.writeData := data 
+        writeIF.bits.addr           := addr
+        writeIF.bits.data.writeData := data
         writeIF.bits.data.strb      := mask
 
-        regValid := io.tl.a.fire
+        when(io.tl.a.fire) {
+          regValid := true.B
+        }.elsewhen(writeIF.fire) {
+          regValid := false.B
+        }
 
         when(writeIF.fire) {
           when(beatCnt > config.tlConfig.dataBusSize.U) {
@@ -169,6 +171,11 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
           reg.data    := io.tl.a.bits.data
           reg.mask    := io.tl.a.bits.mask
           reg.address := reg.address + config.tlConfig.dataBusSize.U
+          when(acceptRemaining >= config.tlConfig.dataBusSize.U) {
+            acceptRemaining := acceptRemaining - config.tlConfig.dataBusSize.U
+          }.otherwise {
+            acceptRemaining := 0.U
+          }
         }
       }
       is(sWriteReturn) {
@@ -189,22 +196,39 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
 
   if (config.read) {
     val readIF = io.rMem.get
+
+    val respValid   = RegInit(false.B)
+    val respData    = Reg(readIF.response.bits.readData.cloneType)
+    val outstanding = RegInit(false.B)
+
+    val reqAddr = Reg(UInt(c.addrWidth.W))
+
     switch(state) {
       is(sReadLock) {
-        readIF.request.valid         := true.B
+        readIF.request.valid         := !outstanding
         readIF.request.bits.addr.get := reg.address
-        io.tl.d.valid        := readIF.response.valid
+        io.tl.d.valid        := respValid
         io.tl.d.bits.opcode  := TilelinkOpcodes.AccessAckData
         io.tl.d.bits.param   := 0.U
         io.tl.d.bits.size    := reg.size
         io.tl.d.bits.source  := 0.U
         io.tl.d.bits.sink    := 0.U
         io.tl.d.bits.denied  := 0.U
-        //io.tl.d.bits.data    := readIF.response.bits.readData.asUInt
-        io.tl.d.bits.data    := gather(readIF.response.bits.readData, addrOld)
+        io.tl.d.bits.data    := gather(respData, reqAddr)
         io.tl.d.bits.corrupt := 0.U
-        when(readIF.request.fire) { reg.address := reg.address + config.tlConfig.dataBusSize.U }
+
+        when(readIF.request.fire) {
+          reqAddr     := reg.address
+          reg.address := reg.address + config.tlConfig.dataBusSize.U
+          outstanding := true.B
+        }
+        when(readIF.response.valid) {
+          respValid := true.B
+          respData  := readIF.response.bits.readData
+        }
         when(io.tl.d.fire) {
+          respValid   := false.B
+          outstanding := false.B
           beatCnt := beatCnt - config.tlConfig.dataBusSize.U
           when(beatCnt === 0.U) { state := sIdle }
         }
@@ -225,9 +249,8 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
         when(amoReserve.fire) { state := amoRead }
       }
       is(amoRead) {
-        val (_, _, memAddr)          = scatter(reg.data, reg.mask, reg.address)
         readIF.request.valid         := true.B
-        readIF.request.bits.addr.get := memAddr
+        readIF.request.bits.addr.get := reg.address
         when(readIF.request.fire) { state := amoOp }
       }
       is(amoOp) {
@@ -268,8 +291,8 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
         }
       }
       is(amoWrite) {
-        val fullMask                              = Fill(config.tlConfig.dataBusSize, 1.U(1.W))
-        val (writeData, writeMask, writeAddr)     = scatter(amoResult, fullMask, reg.address)
+        val fullMask                          = Fill(config.tlConfig.dataBusSize, 1.U(1.W))
+        val (writeData, writeMask, writeAddr) = scatter(amoResult, fullMask, reg.address)
         writeIF.bits.addr           := writeAddr
         writeIF.bits.data.writeData := writeData
         writeIF.bits.data.strb      := writeMask

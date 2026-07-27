@@ -9,8 +9,6 @@ import scala.collection.mutable.ArrayBuffer
 
 /** Hardware parameters the assembler needs to produce correct encodings. */
 case class AssemblerConfig(
-  /** Bytes per data bus beat (default 8 for 64-bit AXI). */
-  dataBusBytes: Int = 8,
   /** Number of memory tiers in the hardware (used to map FB tier numbering to hardware tier indices). */
   nTiers: Int = 3,
   /** Width of the generation tag (in bits) baked into the LSBs of every
@@ -281,7 +279,10 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     val src1 = buffers(src1Id)
     val dst  = buffers(dstId)
 
-    val beats = bufferBeats(dst)
+    // Execute.size is the systolic array's row/col trip count, not a bus
+    // beat count — it must come from the destination buffer's own shape,
+    // independent of the TileLink bus width.
+    val size = matmulSize(dst)
 
     val addrs0 = encodeBufferAddr(src0, findSemForBuffer(exec, isAcquire = false, src0Id))
     val addrs1 = encodeBufferAddr(src1, findSemForBuffer(exec, isAcquire = false, src1Id))
@@ -290,7 +291,7 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     Lowered(Seq(Encoding.encodeExecute(
       func   = 0,
       mode   = 0,
-      size   = beats,
+      size   = size,
       addrs0 = addrs0,
       addrs1 = addrs1,
       addrd0 = addrd0,
@@ -357,11 +358,9 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     None
   }
 
-  /** Number of data bus beats for a buffer. */
-  private def bufferBeats(buf: BufferRef): Int = {
-    val totalBytes = bufferTotalBytes(buf)
-    ((totalBytes + config.dataBusBytes - 1) / config.dataBusBytes).toInt
-  }
+  /** Systolic array row/col trip count for a matmul destination buffer
+    * (its leading shape dimension), independent of the TileLink bus width. */
+  private def matmulSize(buf: BufferRef): Int = buf.shape(0).toInt
 
   private def bufferTotalBytes(buf: BufferRef): Long = {
     val shape = (0 until buf.shapeLength()).map(buf.shape(_))
