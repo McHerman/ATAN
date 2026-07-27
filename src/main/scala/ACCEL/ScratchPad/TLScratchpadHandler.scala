@@ -143,7 +143,8 @@ class TLScratchpadHandler(config: TLScratchConfig, wideBanks: Option[Int] = None
               regValid := io.tl.a.valid
               beatCnt := io.tl.a.bits.size
               // ceil(size / dataBusSize) - 1: total beats minus the one just accepted.
-              acceptRemaining := (io.tl.a.bits.size + c.dataBusSize.U - 1.U) / c.dataBusSize.U - 1.U
+              //acceptRemaining := (io.tl.a.bits.size - (c.dataBusSize - 1).U) / c.dataBusSize.U
+              acceptRemaining := io.tl.a.bits.size - c.dataBusSize.U
 
               state := sWriteLock
             }
@@ -166,7 +167,6 @@ class TLScratchpadHandler(config: TLScratchConfig, wideBanks: Option[Int] = None
     val writeIF = io.wMem.get
     switch(state) {
       is(sWriteLock){
-
 
         io.tl.a.ready := writeIF.ready && acceptRemaining > 0.U
 
@@ -205,7 +205,12 @@ class TLScratchpadHandler(config: TLScratchConfig, wideBanks: Option[Int] = None
           reg.data := io.tl.a.bits.data
           reg.mask := io.tl.a.bits.mask
           reg.address := reg.address + c.dataBusSize.U
-          acceptRemaining := acceptRemaining - 1.U
+          //acceptRemaining := acceptRemaining - 1.U
+          when(acceptRemaining >= c.dataBusSize.U) {
+            acceptRemaining := acceptRemaining - c.dataBusSize.U
+          }.otherwise{
+            acceptRemaining := 0.U 
+          }
         }
       }
       is(sWriteReturn) {
