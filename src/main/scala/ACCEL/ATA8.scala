@@ -112,7 +112,7 @@ class ATA8(config: Configuration, memCfgBase: MemSystemConfig = MemSystemConfig.
 
 object ATA8 extends App {
   _root_.circt.stage.ChiselStage.emitSystemVerilogFile(
-    new ATA8(Configuration.default()),
+    new ATA8(Configuration.large16x16()),
     firtoolOpts = Array("-disable-all-randomization", "-strip-debug-info")
   )
 }

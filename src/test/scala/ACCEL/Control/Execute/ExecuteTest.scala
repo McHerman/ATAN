@@ -128,7 +128,7 @@ class ExecuteTest extends AnyFreeSpec with Matchers with ChiselSim {
   // ── Tests ──────────────────────────────────────────────────────────────────
 
   "Execute should compute WS matrix multiply without semaphores" in {
-    implicit val c = Configuration.test()
+    implicit val c = Configuration.default()
 
     simulate(new Execute()) { dut =>
 

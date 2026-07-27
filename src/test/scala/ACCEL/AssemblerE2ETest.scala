@@ -26,11 +26,8 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
   // These fixtures (input_8_*.eaac) were built against the pre-refactor
   // hardware: an 8x8 array with dataBusSize == arrayDim and accDataWidth ==
   // arithDataWidth (accumulation quantized to 8 bits internally, no
-  // dedicated wider accumulator). Their golden references were computed
-  // against that quantization, so they must run at Configuration.legacy8x8()
-  // -- not a decoupled-but-small config -- or the expected values won't
-  // match what the hardware actually produces.
-  def smallArrayConfig: Configuration = Configuration.legacy8x8()
+  // dedicated wider accumulator) -- i.e. exactly Configuration.default().
+  def smallArrayConfig: Configuration = Configuration.default()
 
   // ── Test matrix (same as ATA8Test) ────────────────────────────────────
 
@@ -183,7 +180,7 @@ class AssemblerE2ETest extends AnyFreeSpec with Matchers with ChiselSim {
     // tensor from the host, multiplies it against an embedded constant, and
     // stores the (16x16xi32) result.
     val n16 = 16
-    implicit val testConfig: Configuration = Configuration.default()
+    implicit val testConfig: Configuration = Configuration.large16x16()
       .withBus(_.copy(sourceWidth = 8))
       .withSemaphore(_.copy(generationWidth = 2))
     val msCfg = MemSystemConfig.default().copy(

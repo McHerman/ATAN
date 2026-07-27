@@ -9,7 +9,7 @@ class TLScratchpadHandlerTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   val maxCycles = 500
 
-  implicit val c: Configuration = Configuration.legacy8x8()
+  implicit val c: Configuration = Configuration.default()
 
   def waitFor(step: () => Unit)(cond: => Boolean, msg: String): Unit = {
     var cycles = 0
