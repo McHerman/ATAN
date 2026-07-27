@@ -70,6 +70,12 @@ class TLScratchpadHandler(config: TLScratchConfig, wideBanks: Option[Int] = None
 
   val state        = RegInit(sIdle)
   val beatCnt      = Reg(UInt(24.W))
+  // Beats still to be *accepted* into reg (independent of beatCnt, which
+  // tracks bytes still to be *committed*). Needed because accept and commit
+  // are pipelined one stage apart: a commit can land on a cycle where the
+  // next beat hasn't arrived yet, and beatCnt must not be the thing that
+  // decides whether more beats are still expected to arrive.
+  val acceptRemaining = Reg(UInt(24.W))
   val firstBeat    = RegInit(false.B)
   val reg          = Reg(new TilelinkA(c.tlBus))
   val regValid     = RegInit(false.B)
@@ -136,6 +142,8 @@ class TLScratchpadHandler(config: TLScratchConfig, wideBanks: Option[Int] = None
               reg := io.tl.a.bits
               regValid := io.tl.a.valid
               beatCnt := io.tl.a.bits.size
+              // ceil(size / dataBusSize) - 1: total beats minus the one just accepted.
+              acceptRemaining := (io.tl.a.bits.size + c.dataBusSize.U - 1.U) / c.dataBusSize.U - 1.U
 
               state := sWriteLock
             }
@@ -160,7 +168,7 @@ class TLScratchpadHandler(config: TLScratchConfig, wideBanks: Option[Int] = None
       is(sWriteLock){
 
 
-        io.tl.a.ready := writeIF.ready && beatCnt > c.dataBusSize.U
+        io.tl.a.ready := writeIF.ready && acceptRemaining > 0.U
 
         // Check for reservation
         if(config.atomic){
@@ -182,16 +190,22 @@ class TLScratchpadHandler(config: TLScratchConfig, wideBanks: Option[Int] = None
 
         regValid := io.tl.a.fire
 
-        when(beatCnt > c.dataBusSize.U && writeIF.fire) {
-          beatCnt := beatCnt - c.dataBusSize.U
-        }.otherwise {
-          state := sWriteReturn
+        // Only advance on an actual commit (writeIF.fire): a cycle where the
+        // next beat simply hasn't arrived yet from upstream (regValid still
+        // false) must stall here, not be mistaken for "transfer complete".
+        when(writeIF.fire) {
+          when(beatCnt > c.dataBusSize.U) {
+            beatCnt := beatCnt - c.dataBusSize.U
+          }.otherwise {
+            state := sWriteReturn
+          }
         }
 
         when(io.tl.a.fire) {
           reg.data := io.tl.a.bits.data
           reg.mask := io.tl.a.bits.mask
           reg.address := reg.address + c.dataBusSize.U
+          acceptRemaining := acceptRemaining - 1.U
         }
       }
       is(sWriteReturn) {
@@ -219,22 +233,40 @@ class TLScratchpadHandler(config: TLScratchConfig, wideBanks: Option[Int] = None
     // arrives — so the group it landed on has to be captured now, not
     // recomputed from reg.address once the response shows up.
     val groupReg = if (wideBanks.isDefined) Some(RegNext(groupIdx(reg.address))) else None
+
+    // Response from spm is only held high for a single cycle, if not accepted immediately, information is lost.
+    // Respvalid and outstanding latch spm output until reciever is ready to accept
+
+    val respValid    = RegInit(false.B)
+    val respData     = Reg(readIF.response.bits.readData.cloneType)
+    val outstanding  = RegInit(false.B)
+
     switch(state) {
       is(sReadLock) {
-        readIF.request.valid         := true.B
+        readIF.request.valid         := !outstanding
         readIF.request.bits.addr.get := (if (wideBanks.isEmpty) reg.address else rowAddr(reg.address))
-        io.tl.d.valid        := readIF.response.valid
+        io.tl.d.valid        := respValid
         io.tl.d.bits.opcode  := TilelinkOpcodes.AccessAckData
         io.tl.d.bits.param   := 0.U
         io.tl.d.bits.size    := reg.size
         io.tl.d.bits.source  := 0.U
         io.tl.d.bits.sink    := 0.U
         io.tl.d.bits.denied  := 0.U
-        io.tl.d.bits.data    := (if (wideBanks.isEmpty) readIF.response.bits.readData.asUInt
-                                  else gatherByGroup(readIF.response.bits.readData, groupReg.get))
+        io.tl.d.bits.data    := (if (wideBanks.isEmpty) respData.asUInt
+                                  else gatherByGroup(respData, groupReg.get))
         io.tl.d.bits.corrupt := 0.U
-        when(readIF.request.fire) { reg.address := reg.address + c.dataBusSize.U }
+
+        when(readIF.request.fire) {
+          reg.address := reg.address + c.dataBusSize.U
+          outstanding := true.B
+        }
+        when(readIF.response.valid) {
+          respValid := true.B
+          respData  := readIF.response.bits.readData
+        }
         when(io.tl.d.fire) {
+          respValid   := false.B
+          outstanding := false.B
           beatCnt := beatCnt - c.dataBusSize.U
           when(beatCnt === 0.U) { state := sIdle }
         }
