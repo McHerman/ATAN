@@ -57,7 +57,6 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
   //val remaining = if (config.semaphore) Some(RegInit(0.U(24.W))) else None
   val remaining = RegInit(0.U(24.W))
 
-
   switch(StateReg) {
     is(idle) {
       io.interface.descriptor.ready := true.B
@@ -100,7 +99,8 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
         assert(stepSize =/= 0.U)
 
         val effectiveSizeVal = Mux(stepSize < remaining, stepSize, remaining)
-        val newBeatCnt       = effectiveSizeVal - c.dataBusSize.U
+        // Underflow protection
+        val newBeatCnt = Mux(effectiveSizeVal > c.dataBusSize.U, effectiveSizeVal - c.dataBusSize.U, 0.U)
 
         beatCnt       := newBeatCnt
         effectiveSize := effectiveSizeVal
@@ -209,7 +209,8 @@ class TLDMA(config: TLDMAConfig, sourceId: Int = 0)(implicit c: MemBusConfig) ex
           dataOut.valid := true.B
           dataOut.bits  := io.tl.d.bits.data
 
-          when(beatCnt < effectiveSize - c.dataBusSize.U) {
+        // Underflow protection
+          when(beatCnt + c.dataBusSize.U < effectiveSize) {
             beatCnt := beatCnt + c.dataBusSize.U
           }.otherwise {
             beatCnt  := 0.U

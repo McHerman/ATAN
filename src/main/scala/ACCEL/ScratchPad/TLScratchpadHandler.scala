@@ -104,7 +104,9 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
           if (config.read) {
             when(io.tl.a.fire) {
               reg     := io.tl.a.bits
-              beatCnt := io.tl.a.bits.size - config.tlConfig.dataBusSize.U
+              // underflow guard
+              beatCnt := Mux(io.tl.a.bits.size > config.tlConfig.dataBusSize.U,
+                io.tl.a.bits.size - config.tlConfig.dataBusSize.U, 0.U)
               state   := sReadLock
             }
           }
@@ -115,8 +117,9 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
               reg      := io.tl.a.bits
               regValid := io.tl.a.valid
               beatCnt  := io.tl.a.bits.size
-              // Beats still to arrive after this one (total minus the one just accepted).
-              acceptRemaining := io.tl.a.bits.size - config.tlConfig.dataBusSize.U
+              // underflow guard
+              acceptRemaining := Mux(io.tl.a.bits.size > config.tlConfig.dataBusSize.U,
+                io.tl.a.bits.size - config.tlConfig.dataBusSize.U, 0.U)
               state    := sWriteLock
             }
           }
@@ -125,7 +128,9 @@ class TLScratchpadHandler(config: TLScratchConfig)(implicit c: MemBusConfig) ext
           if (config.atomic) {
             when(io.tl.a.fire) {
               reg     := io.tl.a.bits
-              beatCnt := io.tl.a.bits.size - config.tlConfig.dataBusSize.U
+              // Same underflow guard as the Get path above.
+              beatCnt := Mux(io.tl.a.bits.size > config.tlConfig.dataBusSize.U,
+                io.tl.a.bits.size - config.tlConfig.dataBusSize.U, 0.U)
               state   := amoLock
             }
           }

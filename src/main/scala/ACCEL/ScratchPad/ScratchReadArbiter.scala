@@ -49,10 +49,9 @@ class ScratchReadArbiter(numPorts: Int)(implicit c: MemBusConfig) extends Module
   when(isLocked) {
     io.inPorts(activePort) <> io.outPort
 
-    // Count D bytes to unlock
     when(io.outPort.d.fire) {
       beatCnt := beatCnt + c.dataBusSize.U
-      when(beatCnt === (totalBeats - c.dataBusSize.U)) {
+      when(beatCnt + c.dataBusSize.U >= totalBeats) {
         isLocked := false.B
       }
     }
