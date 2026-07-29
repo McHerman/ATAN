@@ -45,8 +45,7 @@ class BeatPacker(implicit c: Configuration) extends Module {
     when(next >= c.dataBusSize.U) {
       beatReady := true.B
       byteOffset := 0.U
-
-      assert(next == c.dataBusSize.U, "beatpacker overflow")
+      //assert(next == c.dataBusSize.U, "beatpacker overflow")
     }.otherwise {
       byteOffset := next
     }

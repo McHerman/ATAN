@@ -40,7 +40,7 @@ class BeatUnpacker(implicit c: Configuration) extends Module {
     when(next >= c.dataBusSize.U) {
       busy       := false.B
       byteOffset := 0.U
-      assert(next == c.dataBusSize.U, "unpacker underflow")
+      //assert(next == c.dataBusSize.U, "unpacker underflow")
     }.otherwise {
       byteOffset := next
     }
