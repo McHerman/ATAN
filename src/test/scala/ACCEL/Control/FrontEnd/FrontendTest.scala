@@ -33,6 +33,7 @@ class FrontendTest extends AnyFreeSpec with Matchers with ChiselSim {
       size   = size,
       addrs0 = simpleAddr(addr0),
       addrd0 = BigInt(0),
+      rows   = size,
     )
 
   def assembleLd(func: Int, mode: Int, size: Int, addrD: Int): Encoded =

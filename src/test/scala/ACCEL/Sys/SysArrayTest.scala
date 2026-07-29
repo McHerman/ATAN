@@ -99,6 +99,7 @@ class SysArrayTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.in.bits.mode.poke(0.U)
       dut.io.in.bits.size.poke(8.U)
       dut.io.in.bits.sizes(0).poke(8.U)
+      dut.io.in.bits.rows.poke(8.U)
 
       dut.clock.step()
 
@@ -178,6 +179,7 @@ class SysArrayTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.in.bits.mode.poke(1.U)
       dut.io.in.bits.size.poke(8.U)
       dut.io.in.bits.sizes(0).poke(8.U)
+      dut.io.in.bits.rows.poke(8.U)
 
       dut.clock.step()
 

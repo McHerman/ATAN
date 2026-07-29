@@ -28,6 +28,7 @@ class BeatUnpackerTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "BeatUnpacker deserializes one wide beat into ordered sub-rows, holding ready low while draining" in {
     simulate(new BeatUnpacker()) { dut =>
+      dut.io.size.poke(c.arrayDim.U)
       dut.io.subRowReady.poke(true.B)
       dut.io.beatIn.valid.poke(false.B)
       dut.clock.step()
@@ -47,6 +48,7 @@ class BeatUnpackerTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   "BeatUnpacker back-to-back beats don't drop a sub-row at the boundary" in {
     simulate(new BeatUnpacker()) { dut =>
+      dut.io.size.poke(c.arrayDim.U)
       dut.io.subRowReady.poke(true.B)
       dut.io.beatIn.valid.poke(false.B)
       dut.clock.step()
@@ -68,8 +70,39 @@ class BeatUnpackerTest extends AnyFreeSpec with Matchers with ChiselSim {
     }
   }
 
+  "BeatUnpacker zero-fills lanes beyond a runtime size smaller than arrayDim" in {
+    // size=4 on an arrayDim=8 array: half the lanes carry real bytes packed
+    // tightly at 4 bytes/row (matching the assembler's unpadded layout), the
+    // other half must read back as zero regardless of what garbage sits in
+    // the underlying latched beat there.
+    val size = 4
+    val rowsPerBeat = c.dataBusSize / size
+
+    simulate(new BeatUnpacker()) { dut =>
+      dut.io.size.poke(size.U)
+      dut.io.subRowReady.poke(true.B)
+      dut.io.beatIn.valid.poke(false.B)
+      dut.clock.step()
+
+      driveBeat(dut, base = 0)
+
+      for (r <- 0 until rowsPerBeat) {
+        dut.io.subRowValid.expect(true.B)
+        for (lane <- 0 until c.arrayDim) {
+          val expected = if (lane < size) (r * size + lane) else 0
+          dut.io.subRow(lane).expect(expected.U(8.W))
+        }
+        dut.clock.step()
+      }
+
+      dut.io.beatIn.ready.expect(true.B)
+      dut.io.subRowValid.expect(false.B)
+    }
+  }
+
   "BeatUnpacker holds a sub-row when the downstream consumer stalls" in {
     simulate(new BeatUnpacker()) { dut =>
+      dut.io.size.poke(c.arrayDim.U)
       dut.io.subRowReady.poke(false.B)
       dut.io.beatIn.valid.poke(false.B)
       dut.clock.step()

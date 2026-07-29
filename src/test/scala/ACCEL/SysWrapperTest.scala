@@ -83,6 +83,11 @@ class SysWrapperTest extends AnyFreeSpec with Matchers with ChiselSim {
     dut.io.in.response.bits.readData.func.poke(0.U)
     dut.io.in.response.bits.readData.mode.poke(mode.U)
     dut.io.in.response.bits.readData.size.poke(size.U)
+    // `size` here is n*dataBusSize (relies on SysController's buildTree
+    // truncating it back down to the real array width n); `rows` has no
+    // such truncation, so it must be poked with the true row count (n)
+    // directly, not the untruncated `size` parameter.
+    dut.io.in.response.bits.readData.rows.poke(n.U)
 
     val ports = Seq(
       (dut.io.in.response.bits.readData.addrs(0), addr0, sem0),

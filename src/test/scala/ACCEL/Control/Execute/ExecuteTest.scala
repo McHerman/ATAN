@@ -75,6 +75,8 @@ class ExecuteTest extends AnyFreeSpec with Matchers with ChiselSim {
     dut.io.instructionStream.bits.func.poke(0.U)
     dut.io.instructionStream.bits.mode.poke(mode.U)
     dut.io.instructionStream.bits.size.poke(size.U)
+    // Size is mostly used for transfers whereas rows count actual rows in matrix, used for non-square matmul
+    dut.io.instructionStream.bits.rows.poke(n.U)
 
     val ports = Seq(
       (dut.io.instructionStream.bits.addrs(0), addr0),
