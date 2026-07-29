@@ -40,6 +40,8 @@ class LoadController(implicit c: Configuration) extends Module {
   }
   val fifo = Module(new Queue(new FifoBeat, entries = 4, pipe = false, flow = false))
 
+  val reg = Reg(new LoadInst)
+
   fifo.io.enq.valid     := io.AXIST.tvalid
   fifo.io.enq.bits.data := io.AXIST.tdata
   fifo.io.enq.bits.last := io.AXIST.tlast
@@ -51,7 +53,13 @@ class LoadController(implicit c: Configuration) extends Module {
   // dataBusSize*8-bit TileLink beat before handing it to the DMA.
   val assembled = Reg(Vec(wordsPerBeat, UInt(c.axiStreamWidth.W)))
   val wordIdx   = RegInit(0.U(log2Ceil(wordsPerBeat + 1).W))
-  val beatReady = wordIdx === wordsPerBeat.U
+  // Set once tlast is seen on this descriptor's own final real AXI word.
+  val sawLast   = RegInit(false.B)
+  val beatReady = wordIdx === wordsPerBeat.U || sawLast
+
+  val bytesPerWord   = c.axiStreamWidth / 8
+  val wordsNeeded    = (reg.size +& (bytesPerWord - 1).U) >> log2Ceil(bytesPerWord)
+  val wordsDelivered = RegInit(0.U(16.W))
 
   ReadDMA.io.interface.descriptor.valid := false.B
   ReadDMA.io.interface.descriptor.bits := DontCare
@@ -61,7 +69,6 @@ class LoadController(implicit c: Configuration) extends Module {
   ReadDMA.io.dataIn.get.response.valid := false.B
   ReadDMA.io.dataIn.get.response.bits.readData := DontCare
 
-  val reg           = Reg(new LoadInst)
   val StateReg      = RegInit(0.U(4.W))
 
   /// DEBUG ///
@@ -75,8 +82,9 @@ class LoadController(implicit c: Configuration) extends Module {
 
       when(io.instructionStream.request.fire) {
         when(io.instructionStream.response.valid) {
-          reg      := io.instructionStream.response.bits.readData
-          StateReg := 1.U
+          reg            := io.instructionStream.response.bits.readData
+          StateReg       := 1.U
+          wordsDelivered := 0.U
         }
       }
     }
@@ -100,11 +108,13 @@ class LoadController(implicit c: Configuration) extends Module {
       }
     }
     is(2.U) { // Assemble AXI-Stream words into TileLink beats, drain into DMA, wait for completion
-      fifo.io.deq.ready := !beatReady
+      fifo.io.deq.ready := !beatReady && wordsDelivered < wordsNeeded
 
       when(fifo.io.deq.fire) {
         assembled(wordIdx) := fifo.io.deq.bits.data
-        wordIdx := wordIdx + 1.U
+        wordIdx            := wordIdx + 1.U
+        wordsDelivered      := wordsDelivered + 1.U
+        when(fifo.io.deq.bits.last) { sawLast := true.B }
       }
 
       ReadDMA.io.dataIn.get.request.ready          := beatReady
@@ -112,13 +122,21 @@ class LoadController(implicit c: Configuration) extends Module {
       ReadDMA.io.dataIn.get.response.bits.readData := assembled.asUInt
 
       when(ReadDMA.io.dataIn.get.request.fire) {
-        wordIdx := 0.U
+        wordIdx  := 0.U
+        sawLast  := false.B
       }
 
       ReadDMA.io.interface.response.ready := true.B
 
       when(ReadDMA.io.interface.response.fire) {
         StateReg := 0.U
+        // wordIdx/assembled/sawLast are a single buffer shared across
+        // sequential Load instructions -- reset defensively in case any
+        // partial assembly is still in flight when the descriptor
+        // completes, so it can never bleed into the next instruction's
+        // own AXI stream.
+        wordIdx := 0.U
+        sawLast := false.B
       }
     }
   }

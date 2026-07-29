@@ -279,10 +279,12 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     val src1 = buffers(src1Id)
     val dst  = buffers(dstId)
 
-    // Execute.size is the systolic array's row/col trip count, not a bus
-    // beat count — it must come from the destination buffer's own shape,
-    // independent of the TileLink bus width.
-    val size = matmulSize(dst)
+    // Added independent row count to support non-square matmul
+    val m = dst.shape(0).toInt
+    val k = src0.shape(1).toInt
+    val n = dst.shape(1).toInt
+    require(k == src1.shape(0), s"Matmul contraction mismatch: src0 cols=$k vs src1 rows=${src1.shape(0)}")
+    require(k == n, s"Matmul requires a square weight matrix (K == N) in this hardware revision: K=$k, N=$n")
 
     val addrs0 = encodeBufferAddr(src0, findSemForBuffer(exec, isAcquire = false, src0Id))
     val addrs1 = encodeBufferAddr(src1, findSemForBuffer(exec, isAcquire = false, src1Id))
@@ -291,10 +293,11 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     Lowered(Seq(Encoding.encodeExecute(
       func   = 0,
       mode   = 0,
-      size   = size,
+      size   = n,
       addrs0 = addrs0,
       addrs1 = addrs1,
       addrd0 = addrd0,
+      rows   = m,
     )), Seq.empty)
   }
 
@@ -357,10 +360,6 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
     }
     None
   }
-
-  /** Systolic array row/col trip count for a matmul destination buffer
-    * (its leading shape dimension), independent of the TileLink bus width. */
-  private def matmulSize(buf: BufferRef): Int = buf.shape(0).toInt
 
   private def bufferTotalBytes(buf: BufferRef): Long = {
     val shape = (0 until buf.shapeLength()).map(buf.shape(_))

@@ -13,10 +13,17 @@ class XFile(implicit c: Configuration) extends Module {
 
     val Memport = Flipped(Decoupled(Vec(c.dataBusSize,UInt(8.W)))) //TODO: change name
     val size = Input(UInt(log2Ceil(c.arrayDim + 1).W))
+    // Known as soon as the *next* op's instruction is fetched by
+    // SysController -- well before io.size (from Grain's own inReg, which
+    // only updates once this op is fully loaded and dispatched). The
+    // unpacker needs the real size *while* Memport is actively draining,
+    // not after.
+    val loadSize = Input(UInt(log2Ceil(c.arrayDim + 1).W))
   })
 
   val unpacker = Module(new BeatUnpacker())
   unpacker.io.beatIn <> io.Memport
+  unpacker.io.size := io.loadSize
 
   val moduleArray = Seq.fill(c.arrayDim)(Module(new BufferFIFO(c.grainFIFOSize, UInt(8.W))))
 
@@ -39,7 +46,7 @@ class XFile(implicit c: Configuration) extends Module {
       module.io.ReadData.request.valid := XACT(i)
     }
 
-    when(module.io.ReadData.request.valid){
+    when(module.io.ReadData.response.valid){
       io.Out(i).X := module.io.ReadData.response.bits.readData
     }.otherwise{
       io.Out(i).X := 0.U

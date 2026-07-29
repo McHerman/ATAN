@@ -36,12 +36,14 @@ class SysController(implicit c: Configuration) extends Module {
 
     val out          = Decoupled(new SysOP)
     val sysCompleted = Input(Bool())
+    // Size passed directly to packer / unpacker
+    val loadSizes    = Output(Vec(c.grainDim, UInt(log2Ceil(c.arrayDim + 1).W)))
     val debug        = new ExeDebug
   })
 
   val opbuffer   = Module(new BufferFIFO(8, new SysOP))
   // TODO Replace with sem equivalent.
-  val readBuffer = Module(new BufferFIFO(8, new Bundle { val addrPkg = new addrPkg; val size = UInt(8.W) }))
+  val readBuffer = Module(new BufferFIFO(8, new Bundle { val addrPkg = new addrPkg; val size = UInt(8.W); val rows = UInt(8.W) }))
 
   io.in.request.valid := false.B
   io.in.request.bits  := DontCare
@@ -73,6 +75,8 @@ class SysController(implicit c: Configuration) extends Module {
 
   val reg      = Reg(new ExecuteInst)
   val StateReg = RegInit(0.U(4.W))
+
+  io.loadSizes := VectorFillerFunctions.buildTree(reg.size, c.grainDim, c.arrayDim)
 
   /// DEBUG ///
   io.debug.state := StateReg
@@ -107,12 +111,17 @@ class SysController(implicit c: Configuration) extends Module {
 
       val readySignals = VecInit(io.dmaRead.flatten.map(_.descriptor.ready))
       when(readySignals.reduceTree(_ && _)) {
-        (reg.addrs zip io.dmaRead).foreach { case (addrs, dmaSeq) =>
+        (reg.addrs zip io.dmaRead).zipWithIndex.foreach { case ((addrs, dmaSeq), operandIdx) =>
           val readSizes = VectorFillerFunctions.buildTree(reg.size, c.grainDim, c.arrayDim)
           (dmaSeq zip readSizes.zipWithIndex).foreach { case (dma, (size, index)) =>
             val addrSum = if (index == 0) 0.U else readSizes.take(index).reduce(_ + _)
             dma.descriptor.bits(0).addr := addrs.addr + addrSum
-            dma.descriptor.bits(0).size := size * size
+            // operand 0 = X, shape [rows, size] -> rows*size bytes.
+            // operand 1 = Y, shape [size, size] (square, asserted at
+            // assemble time) -> size*size bytes. These only coincided for
+            // every prior (square, rows==size) matmul this hardware was
+            // tested against.
+            dma.descriptor.bits(0).size := (if (operandIdx == 0) reg.rows * size else size * size)
             dma.descriptor.valid := true.B
             dma.descriptor.bits(0).writeEn := false.B
             dma.descriptor.bits(0).source := DontCare
@@ -144,10 +153,12 @@ class SysController(implicit c: Configuration) extends Module {
         opbuffer.io.WriteData.bits.mode   := reg.mode
         opbuffer.io.WriteData.bits.size   := sizes(0)
         opbuffer.io.WriteData.bits.sizes  := sizes
+        opbuffer.io.WriteData.bits.rows   := reg.rows
 
         readBuffer.io.WriteData.valid      := true.B
         readBuffer.io.WriteData.bits.addrPkg  := reg.addrd(0)
         readBuffer.io.WriteData.bits.size  := sizes(0)
+        readBuffer.io.WriteData.bits.rows  := reg.rows
 
         StateReg := 0.U
       }
@@ -172,7 +183,9 @@ class SysController(implicit c: Configuration) extends Module {
         */
 
         dma.descriptor.bits(0).addr := op.addrPkg.addr + addrSum
-        dma.descriptor.bits(0).size := op.size * op.size * c.accDataBytes.U
+        // Output is [rows, size] (M x N) -- rows*size*accDataBytes bytes,
+        // not size*size (only coincided for every prior square matmul).
+        dma.descriptor.bits(0).size := op.rows * op.size * c.accDataBytes.U
         dma.descriptor.valid := true.B
 
         dma.descriptor.bits(0).semaphore.get.semEnable := op.addrPkg.sem.valid

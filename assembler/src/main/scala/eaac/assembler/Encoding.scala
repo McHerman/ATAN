@@ -18,7 +18,9 @@ object Encoding {
     def bitWidth: Int = slots * InstructionSet.SlotBits
   }
 
-  /** Encode an Execute instruction (3 slots / 192 b). */
+  /** Encode an Execute instruction (3 slots / 192 b). `size` is the shared
+    * contraction+output-column trip count (K == N); `rows` is the separate
+    * output-row count (M) -- see InstructionSet.Execute's field comment. */
   def encodeExecute(
     func: Int,
     mode: Int,
@@ -26,6 +28,7 @@ object Encoding {
     addrs0: BigInt,
     addrs1: BigInt = BigInt(0),
     addrd0: BigInt,
+    rows: Int,
   ): Encoded = Encoded(
     Execute.encode(Map(
       "func"   -> BigInt(func),
@@ -34,6 +37,7 @@ object Encoding {
       "addrs0" -> addrs0,
       "addrs1" -> addrs1,
       "addrd0" -> addrd0,
+      "rows"   -> BigInt(rows),
     )),
     Execute.slots,
   )

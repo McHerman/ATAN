@@ -10,6 +10,11 @@ class Grain(implicit c: Configuration) extends Module {
     val writePort = Vec(2,Vec(c.grainDim,Flipped(Decoupled(Vec(c.dataBusSize,UInt(8.W))))))
 
     val readPort = Vec(c.grainDim,Flipped(new Readport(Vec(c.arrayDim,UInt(c.accDataWidth.W)))))
+    val sizes = Output(Vec(c.grainDim, UInt(log2Ceil(c.arrayDim + 1).W)))
+    // From SysController, known before this op's own io.in/inReg is set --
+    // see XFile/YFile's io.loadSize for why BeatUnpacker needs this earlier
+    // value instead.
+    val loadSizes = Input(Vec(c.grainDim, UInt(log2Ceil(c.arrayDim + 1).W)))
     val completed = Output(Bool())
   })
 
@@ -24,6 +29,7 @@ class Grain(implicit c: Configuration) extends Module {
 
   SysCtrl.io.in <> io.in
   io.completed := SysCtrl.io.completed
+  io.sizes := SysCtrl.io.sizes
 
   /// MEM SIGNALS ///
 
@@ -84,12 +90,20 @@ class Grain(implicit c: Configuration) extends Module {
 
   /// SIZE SIGNALS /// 
 
-  (xFiles zip SysCtrl.io.sizes).foreach{case (file,size) => 
+  (xFiles zip SysCtrl.io.sizes).foreach{case (file,size) =>
     file.io.size := size
   }
 
-  (yFiles zip SysCtrl.io.sizes).foreach{case (file,size) => 
+  (yFiles zip SysCtrl.io.sizes).foreach{case (file,size) =>
     file.io.size := size
+  }
+
+  (xFiles zip io.loadSizes).foreach{case (file,size) =>
+    file.io.loadSize := size
+  }
+
+  (yFiles zip io.loadSizes).foreach{case (file,size) =>
+    file.io.loadSize := size
   }
 
   (accuFiles zip SysCtrl.io.sizes).foreach{case (file,size) => 
@@ -109,8 +123,6 @@ class Grain(implicit c: Configuration) extends Module {
   (array.transpose.last zip accuFiles).foreach{case (collum,accuFile) =>
     accuFile.io.In := collum.io.yOut
   }
-
-
 
   array.zipWithIndex.foreach { case (row, i) =>
     row.zipWithIndex.foreach { case (pe, k) =>

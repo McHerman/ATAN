@@ -54,11 +54,11 @@ class SysCtrl(implicit c: Configuration) extends Module {
   
   val StateReg = RegInit(0.U(4.W))
 
-  val inReg = Reg(new SysOP)
+  val inReg = RegInit(0.U.asTypeOf(new SysOP))
 
   io.sizes := inReg.sizes
 
-  switch(StateReg){ // TODO, Add enumerations  
+  switch(StateReg){ // TODO, Add enumerations
     is(0.U){
       io.in.ready := true.B
 
@@ -88,11 +88,11 @@ class SysCtrl(implicit c: Configuration) extends Module {
         StateReg := 2.U
       }
     }
-    is(2.U){ // 
+    is(2.U){ //
       //io.Mode := 0.U
       ctrlOut.state := 0.U
 
-      when(ActivateCnt < inReg.size){
+      when(ActivateCnt < inReg.rows){
         //io.Activate := true.B
         activateOut := true.B
         ActivateCnt := ActivateCnt + 1.U
@@ -102,7 +102,7 @@ class SysCtrl(implicit c: Configuration) extends Module {
       }
     }
     is(4.U){
-      when(ActivateCnt < inReg.size){
+      when(ActivateCnt < inReg.rows){
         when(io.activateLoopBack){
           ActivateCnt := ActivateCnt + 1.U
         }
@@ -118,13 +118,13 @@ class SysCtrl(implicit c: Configuration) extends Module {
       //io.Mode := 0.U
       ctrlOut.state := 1.U
 
-      when(ActivateCnt < inReg.size){
+      when(ActivateCnt < c.arrayDim.U){
         //io.Activate := true.B
         activateOut := true.B
         ActivateCnt := ActivateCnt + 1.U
       }
-      
-      when(EnableCnt < ((inReg.size * 2.U))){
+
+      when(EnableCnt < (c.arrayDim.U * 2.U)){
         //io.Enable := true.B
         EnableCnt := EnableCnt + 1.U
       }.otherwise{
@@ -137,18 +137,18 @@ class SysCtrl(implicit c: Configuration) extends Module {
       //io.Mode := 0.U
       ctrlOut.state := 1.U
 
-      when(WaitCnt < inReg.size){
+      when(WaitCnt < c.arrayDim.U){
         WaitCnt := WaitCnt + 1.U
       }.otherwise{
         WaitCnt := 0.U
         StateReg := 7.U
       }
     }
-    is(7.U){ // 
+    is(7.U){ //
       //io.Mode := 0.U
       ctrlOut.state := 1.U
 
-      when(ShiftCnt < inReg.size){
+      when(ShiftCnt < c.arrayDim.U){
         //io.Shift := true.B
         ctrlOut.shift := true.B
         ShiftCnt := ShiftCnt + 1.U

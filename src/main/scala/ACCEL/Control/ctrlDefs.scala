@@ -46,11 +46,14 @@ abstract class InstBaseExtended(addrsSize: Int, addrdSize: Int)(implicit c: Conf
 
 class ExecuteInst(implicit c: Configuration) extends InstBaseExtended(2, 1) with Decodable {
   val mode = UInt(1.W)
+  // Separate output-row count (M), independent of `size` (the shared
+  // contraction+output-column dimension, K == N) -- see InstructionSet.
+  val rows = UInt(16.W)
 
   private val fieldMap: Map[String, Data] = Map(
     "length" -> length, "opcode" -> opcode, "func" -> func, "mode" -> mode,
     "size" -> size, "addrs0" -> addrs(0), "addrs1" -> addrs(1),
-    "addrd0" -> addrd(0),
+    "addrd0" -> addrd(0), "rows" -> rows,
   )
 
   def layout = InstructionSet.Execute.fields.map { f =>
@@ -137,6 +140,10 @@ class SysOP(implicit c: Configuration) extends Bundle {
   val mode = UInt(1.W)
   val size = UInt(8.W)
   val sizes = Vec(c.grainDim, UInt(log2Ceil(c.arrayDim + 1).W))
+  // Output-row count (M) -- see ExecuteInst.rows. Not split per-grain like
+  // `sizes`: every grain processes the same M rows, just different
+  // column slices.
+  val rows = UInt(8.W)
 }
 
 class DMARead(implicit c: Configuration) extends Bundle {

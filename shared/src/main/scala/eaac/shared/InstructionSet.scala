@@ -126,7 +126,7 @@ object InstructionSet {
   //   Store   : 67 bits used → 2 slots  (length code 1)
   //   Load    : 68 bits used → 2 slots  (length code 1)
   //   DMA     : 113 bits used → 2 slots (length code 1)
-  //   Execute : 152 bits used → 3 slots (length code 2)
+  //   Execute : 168 bits used → 3 slots (length code 2)
   // ---------------------------------------------------------------------------
 
   val Execute = InstructionLayout(1, slots = 3, Seq(
@@ -134,10 +134,12 @@ object InstructionSet {
     OpcodeField,
     Field("func",     8,  1),
     Field("mode",     9,  1),
+    // Decoupled size and row count 
     Field("size",    10, 16),
     Field("addrs0",  26, AddrPkgWidth),  // bits 26..67
     Field("addrs1",  68, AddrPkgWidth),  // bits 68..109
     Field("addrd0", 110, AddrPkgWidth),  // bits 110..151
+    Field("rows",   152, 16),            // bits 152..167
   ))
 
   val Load = InstructionLayout(2, slots = 2, Seq(

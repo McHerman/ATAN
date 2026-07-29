@@ -14,10 +14,15 @@ class YFile(implicit c: Configuration) extends Module {
     val Memport = Flipped(Decoupled(Vec(c.dataBusSize,UInt(8.W)))) //TODO: change name
     val State = Input(UInt(1.W))
     val size = Input(UInt(log2Ceil(c.arrayDim + 1).W))
+    // See XFile.io.loadSize: known earlier than io.size (which only updates
+    // once Grain's own inReg is set, after this op's Memport has already
+    // drained), needed so the unpacker sizes rows correctly while loading.
+    val loadSize = Input(UInt(log2Ceil(c.arrayDim + 1).W))
   })
 
   val unpacker = Module(new BeatUnpacker())
   unpacker.io.beatIn <> io.Memport
+  unpacker.io.size := io.loadSize
 
   val moduleArray = Seq.fill(c.arrayDim)(Module(new BufferFIFO(c.grainFIFOSize, UInt(8.W))))
 
