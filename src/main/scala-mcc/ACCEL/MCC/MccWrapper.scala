@@ -35,7 +35,14 @@ class MccWrapper(initData: Map[Int, BigInt] = Map.empty)(implicit atanConfig: Co
   require(rp.enabled, "MccWrapper requires atanConfig.riscv.enabled = true")
 
   implicit val p: Parameters          = Parameters.empty
-  implicit val coreConf: mcc.common.MccCoreParams = mcc.common.MccCoreParams(xprlen = 32)
+  implicit val coreConf: mcc.common.MccCoreParams = mcc.common.MccCoreParams(
+    xprlen = 32,
+    // The semaphore bank is byte-addressed (each byte in this 256-byte
+    // window selects a distinct full/empty/generation register), not
+    // word-aligned -- see memory.scala's mem_addr_exempt.
+    mmioNoAlignCheckBase = Some(rp.semBase.toLong),
+    mmioNoAlignCheckSize = 0x100,
+  )
   val coreBusConf: MemBusConfig       = CoreMemBusConfig(
     dataBusSize = rp.coreBusConf.dataBusSize,
     addrWidth   = rp.coreBusConf.addrWidth,
