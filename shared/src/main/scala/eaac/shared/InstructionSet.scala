@@ -15,7 +15,7 @@ object InstructionSet {
   val SemGenerationBits = 4
 
   val MaxSemDeps     = 3
-  val SemDepAddrBits = 8
+  val SemDepAddrBits = 12
 
   /** Granularity of the variable-length instruction encoding. */
   val SlotBits = 64
@@ -30,6 +30,12 @@ object InstructionSet {
   case class InstructionLayout(opcode: Int, slots: Int, fields: Seq[Field]) {
     /** Total bit width occupied by this instruction (1, 2 or 3 × SlotBits). */
     def bitWidth: Int = slots * SlotBits
+
+    for (f <- fields) {
+      require(f.startBit + f.width <= bitWidth,
+        s"opcode=$opcode field '${f.name}' (bits ${f.startBit}..${f.startBit + f.width - 1}) " +
+        s"overflows the $bitWidth-bit ($slots-slot) instruction word")
+    }
 
     /** 2-bit length code stored in the inst's header (slots − 1). */
     def lengthCode: Int = slots - 1
@@ -65,22 +71,31 @@ object InstructionSet {
   val OpcodeField = Field("opcode", 2, 6)
 
   // ---------------------------------------------------------------------------
-  // addrPkg sub-layout (42 bits)
+  // addrPkg sub-layout (49 bits)
   // Mirrors the Chisel `addrPkg` Bundle in ctrlDefs.scala (first-declared
-  // field = MSB).  semAddr is 8 bits → up to 256 semaphore-bank ports.
+  // field = MSB). semAddr is 12 bits -> up to 4096 semaphore-bank ports;
+  // stepSize is 12 bits, trading the 4 bits it gave up straight to semAddr
+  // so the total addrPkg width (and every downstream instruction offset
+  // that's computed from AddrPkgWidth) is unchanged.
   // ---------------------------------------------------------------------------
-  val AddrPkgWidth = 42
+  val AddrWidth    = 23
+  val SemAddrBits  = 12
+  val SemStepSizeBits = 12
+  val AddrPkgWidth = 26 + AddrWidth
+  val AddrMask     = (BigInt(1) << AddrWidth) - 1
+  val SemAddrMask     = (BigInt(1) << SemAddrBits) - 1
+  val SemStepSizeMask = (BigInt(1) << SemStepSizeBits) - 1
   object AddrPkg {
-    val addr              = Field("addr",              26, 16)
+    val addr              = Field("addr",              26, AddrWidth)
     val semValid          = Field("sem.valid",         25,  1)
-    val semAddr           = Field("sem.addr",          17,  8)
-    val semStepSizeValid  = Field("sem.stepSize.valid", 16,  1)
-    val semStepSizeBits   = Field("sem.stepSize.bits",   0, 16)
+    val semAddr           = Field("sem.addr",          13,  SemAddrBits)
+    val semStepSizeValid  = Field("sem.stepSize.valid", 12,  1)
+    val semStepSizeBits   = Field("sem.stepSize.bits",   0,  SemStepSizeBits)
 
     val fields: Seq[Field] = Seq(addr, semValid, semAddr, semStepSizeValid, semStepSizeBits)
 
-    /** Encode an addrPkg value (42-bit BigInt). The `semAddr` field is a
-      * byte-level TL address into the semaphore xbar — the assembler is
+    /** Encode an addrPkg value (AddrPkgWidth-bit BigInt). The `semAddr` field
+      * is a byte-level TL address into the semaphore xbar — the assembler is
       * responsible for shifting the semaphore index/port into position and
       * baking the generation tag into the LSBs (the xbar treats those bits
       * as routing don't-care; the semaphore module validates them).
@@ -93,13 +108,13 @@ object InstructionSet {
       stepSize: Int = 0,
     ): BigInt = {
       var v = BigInt(0)
-      v |= BigInt(addr & 0xFFFF) << 26
+      v |= (BigInt(addr) & AddrMask) << 26
       if (semValid) {
         v |= BigInt(1) << 25
-        v |= BigInt(semAddr & 0xFF) << 17
+        v |= (BigInt(semAddr) & SemAddrMask) << 13
         if (stepSizeValid) {
-          v |= BigInt(1) << 16
-          v |= BigInt(stepSize & 0xFFFF)
+          v |= BigInt(1) << 12
+          v |= (BigInt(stepSize) & SemStepSizeMask)
         }
       }
       v
@@ -119,14 +134,16 @@ object InstructionSet {
   //   [8]     func        (where applicable)
   //   [9]     mode        (Execute / Load only; reserved otherwise)
   //   [25:10] size        (16 bits, where applicable)
-  //   [...]   addrPkg(s)  (42 bits each, packed contiguously after the header)
+  //   [...]   addrPkg(s)  (AddrPkgWidth bits each, packed contiguously after
+  //           the header -- offsets below are computed from AddrPkgWidth so
+  //           widening AddrWidth doesn't require re-deriving every literal.
   //
-  // Sizes:
-  //   SemProg : 48 bits used → 1 slot   (length code 0)
-  //   Store   : 67 bits used → 2 slots  (length code 1)
-  //   Load    : 68 bits used → 2 slots  (length code 1)
-  //   DMA     : 113 bits used → 2 slots (length code 1)
-  //   Execute : 168 bits used → 3 slots (length code 2)
+  // Sizes (at AddrWidth=23, AddrPkgWidth=49, SemAddrBits=12, SemDepAddrBits=12):
+  //   SemProg : 96 bits used  → 2 slots (length code 1)
+  //   Store   : 75 bits used  → 2 slots (length code 1)
+  //   Load    : 75 bits used  → 2 slots (length code 1)
+  //   DMA     : 128 bits used → 2 slots (length code 1, zero slack left)
+  //   Execute : 189 bits used → 3 slots (length code 2)
   // ---------------------------------------------------------------------------
 
   val Execute = InstructionLayout(1, slots = 3, Seq(
@@ -134,12 +151,12 @@ object InstructionSet {
     OpcodeField,
     Field("func",     8,  1),
     Field("mode",     9,  1),
-    // Decoupled size and row count 
+    // Decoupled size and row count
     Field("size",    10, 16),
-    Field("addrs0",  26, AddrPkgWidth),  // bits 26..67
-    Field("addrs1",  68, AddrPkgWidth),  // bits 68..109
-    Field("addrd0", 110, AddrPkgWidth),  // bits 110..151
-    Field("rows",   152, 16),            // bits 152..167
+    Field("addrs0",  26,                     AddrPkgWidth),
+    Field("addrs1",  26 +     AddrPkgWidth,   AddrPkgWidth),
+    Field("addrd0",  26 + 2 * AddrPkgWidth,   AddrPkgWidth),
+    Field("rows",    26 + 3 * AddrPkgWidth,   16),
   ))
 
   val Load = InstructionLayout(2, slots = 2, Seq(
@@ -148,7 +165,7 @@ object InstructionSet {
     Field("func",    8,  1),
     Field("mode",    9,  1),
     Field("size",   10, 16),
-    Field("addrd0", 26, AddrPkgWidth),   // bits 26..67
+    Field("addrd0", 26, AddrPkgWidth),
   ))
 
   val Store = InstructionLayout(3, slots = 2, Seq(
@@ -156,7 +173,7 @@ object InstructionSet {
     OpcodeField,
     Field("func",    8,  1),
     Field("size",   10, 16),
-    Field("addrs0", 26, AddrPkgWidth),   // bits 26..67
+    Field("addrs0", 26, AddrPkgWidth),
   ))
 
   val DMA = InstructionLayout(4, slots = 2, Seq(
@@ -164,25 +181,35 @@ object InstructionSet {
     OpcodeField,
     Field("func",     8,  1),
     Field("size",    10, 16),
-    Field("addrs0",  26, AddrPkgWidth),  // bits 26..67
-    Field("addrd0",  68, AddrPkgWidth),  // bits 68..109
-    Field("DMAAddr", 110, 4),
+    Field("addrs0",  26,                   AddrPkgWidth),
+    Field("addrd0",  26 +     AddrPkgWidth, AddrPkgWidth),
+    Field("DMAAddr", 26 + 2 * AddrPkgWidth, 4),
   ))
 
   val EventModeBits = 2
 
+  // Offsets derived from SemAddrBits/SemGenerationBits/EventModeBits so
+  // widening any one of them (as happened when semAddr grew from 8 to 12
+  // bits) can't silently leave a later field's start-bit stale.
+  private val SemProgInitFullBit  = 8 + SemAddrBits
+  private val SemProgInitEmptyBit = SemProgInitFullBit + 16
+  private val SemProgGenBit       = SemProgInitEmptyBit + 16
+  private val SemProgEventModeBit = SemProgGenBit + SemGenerationBits
+  private val SemProgDepCountBit  = SemProgEventModeBit + EventModeBits
+  private val SemProgDepsBit      = SemProgDepCountBit + 2
+
   val SemProg = InstructionLayout(5, slots = 2, Seq(
     LengthField,
     OpcodeField,
-    Field("semAddr",      8,  8),
-    Field("initFull",  16, 16),
-    Field("initEmpty", 32, 16),
-    Field("generation",  48, SemGenerationBits),
-    Field("eventMode",   48 +     SemGenerationBits, EventModeBits),
-    Field("depCount",    48 + EventModeBits + SemGenerationBits, 2),
-    Field("dep0",        48 + 2 + EventModeBits + SemGenerationBits + 0 * SemDepAddrBits, SemDepAddrBits),
-    Field("dep1",        48 + 2 + EventModeBits + SemGenerationBits + 1 * SemDepAddrBits, SemDepAddrBits),
-    Field("dep2",        48 + 2 + EventModeBits + SemGenerationBits + 2 * SemDepAddrBits, SemDepAddrBits),
+    Field("semAddr",     8,                  SemAddrBits),
+    Field("initFull",    SemProgInitFullBit,  16),
+    Field("initEmpty",   SemProgInitEmptyBit, 16),
+    Field("generation",  SemProgGenBit,       SemGenerationBits),
+    Field("eventMode",   SemProgEventModeBit, EventModeBits),
+    Field("depCount",    SemProgDepCountBit,  2),
+    Field("dep0",        SemProgDepsBit + 0 * SemDepAddrBits, SemDepAddrBits),
+    Field("dep1",        SemProgDepsBit + 1 * SemDepAddrBits, SemDepAddrBits),
+    Field("dep2",        SemProgDepsBit + 2 * SemDepAddrBits, SemDepAddrBits),
   ))
 
   /** All instruction layouts indexed by opcode. */

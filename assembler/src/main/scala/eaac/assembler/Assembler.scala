@@ -305,18 +305,18 @@ class Assembler(config: AssemblerConfig = AssemblerConfig.default) {
 
   /** Encode a BufferRef's offset as an addrPkg BigInt with optional semaphore. */
   private def encodeBufferAddr(buf: BufferRef, sem: Option[(Int, Int)]): BigInt = {
-    val offset16 = (buf.offset() & 0xFFFF).toInt
+    val offset = (buf.offset() & InstructionSet.AddrMask).toInt
     sem match {
       case Some((addr, stepSize)) =>
         AddrPkg.encode(
-          addr          = offset16,
+          addr          = offset,
           semValid      = true,
           semAddr       = addr,
           stepSizeValid = true,
           stepSize      = stepSize,
         )
       case None =>
-        AddrPkg.simple(offset16)
+        AddrPkg.simple(offset)
     }
   }
 

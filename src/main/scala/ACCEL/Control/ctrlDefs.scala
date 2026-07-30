@@ -28,8 +28,11 @@ trait Decodable { self: Bundle =>
 }
 
 class addrPkg(implicit c: Configuration) extends Bundle {
-  val addr = UInt(16.W)
-  val sem = Valid(new Bundle { val addr = UInt(8.W); val stepSize = Valid(UInt(16.W)) })
+  val addr = UInt(InstructionSet.AddrWidth.W)
+  val sem = Valid(new Bundle {
+    val addr     = UInt(InstructionSet.SemAddrBits.W)
+    val stepSize = Valid(UInt(InstructionSet.SemStepSizeBits.W))
+  })
 }
 
 abstract class InstBase(implicit c: Configuration) extends Bundle {
@@ -107,7 +110,7 @@ class SemProgRow extends Bundle {
 }
 
 class SemProgPayload extends Bundle {
-  val semAddr    = UInt(8.W)
+  val semAddr    = UInt(InstructionSet.SemAddrBits.W)
   val initFull   = UInt(16.W)
   val initEmpty  = UInt(16.W)
   val generation = UInt(InstructionSet.SemGenerationBits.W)
