@@ -44,8 +44,8 @@ class MemDMA(sourceIdA: Int = 0, sourceIdB: Int = 0)(implicit c: MemBusConfig) e
   B.io.interface.descriptor.bits  := DontCare
   B.io.interface.response.ready   := false.B
 
-  val AtoB = Module(new BufferFIFO(8, UInt((c.dataBusSize * 8).W)))
-  val BtoA = Module(new BufferFIFO(8, UInt((c.dataBusSize * 8).W)))
+  val AtoB = Module(new BufferFIFO(64, UInt((c.dataBusSize * 8).W)))
+  val BtoA = Module(new BufferFIFO(64, UInt((c.dataBusSize * 8).W)))
 
   AtoB.io.WriteData <> A.io.dataOut.get
   BtoA.io.WriteData <> B.io.dataOut.get
