@@ -41,9 +41,9 @@ class SysController(implicit c: Configuration) extends Module {
     val debug        = new ExeDebug
   })
 
-  val opbuffer   = Module(new BufferFIFO(8, new SysOP))
+  val opbuffer   = Module(new BufferFIFO(32, new SysOP))
   // TODO Replace with sem equivalent.
-  val readBuffer = Module(new BufferFIFO(8, new Bundle { val addrPkg = new addrPkg; val size = UInt(8.W); val rows = UInt(8.W) }))
+  val readBuffer = Module(new BufferFIFO(32, new Bundle { val addrPkg = new addrPkg; val size = UInt(8.W); val rows = UInt(8.W) }))
 
   io.in.request.valid := false.B
   io.in.request.bits  := DontCare

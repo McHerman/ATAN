@@ -63,11 +63,17 @@ class AtanMcc16x16DUT(
   val tier0Size     = BigInt(memCfgBase.tiers(0).bankDepth) * atanConfig.dataBusSize
   val sharedSpmMask = tier0Size.min(mccAddrSpace) - 1
 
+  // Must cover every address in semaphore address range
+  val semMaxOffset: BigInt =
+    ((((c.nSemaphores.toLong - 1) * 4 + 3) << c.semaphoreGenerationWidth) +
+      ((1L << c.semaphoreGenerationWidth) - 1))
+  val semMask: BigInt = (BigInt(1) << (semMaxOffset + 1).bitLength) - 1
+
   val xbar = Module(new TLXbar(TLXbarConfig(
     nMasters = 1,
     slaves = Seq(
       TLSlaveConfig(addressSet = Seq((BigInt(c.riscv.sharedSpmBase), sharedSpmMask))),
-      TLSlaveConfig(addressSet = Seq((BigInt(c.riscv.semBase), BigInt(0x00FF)))),
+      TLSlaveConfig(addressSet = Seq((BigInt(c.riscv.semBase), semMask))),
     ),
     tl = c.riscv.tlBus,
   )))

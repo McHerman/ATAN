@@ -42,7 +42,7 @@ class MemSystem(ctrlCfg: Configuration)(implicit mc: MemSystemConfig) extends Mo
   val dmas     = Seq.tabulate(nDMAs) { i =>
     Module(new MemDMA(sourceIdA = 6 + 2 * i, sourceIdB = 7 + 2 * i))
   }
-  val dmaQueue = Module(new DMAQueue(nDMAs)(ctrlCfg))
+  val dmaQueue = Module(new DMAQueue(nDMAs, queueDepth = 64)(ctrlCfg))
 
   dmaQueue.io.instructionStream <> io.dmaInstructionStream
 
