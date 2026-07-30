@@ -169,6 +169,8 @@ package object ATA8 {
     val grainSizeWidth = log2Ceil(grainDim)
     val accDataBytes   = accDataWidth / 8
 
+    val verbosePrint = false
+
     require(accDataWidth >= arithDataWidth, "accDataWidth must be >= arithDataWidth")
     require(accDataWidth % 8 == 0, "accDataWidth must be a multiple of 8")
     require(dataBusSize % (arrayDim * arithDataWidth / 8) == 0,
