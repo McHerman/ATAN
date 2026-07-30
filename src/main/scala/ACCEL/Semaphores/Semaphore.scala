@@ -55,6 +55,8 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
   val eventMode       = RegInit(SemEventModes.RW)
   val touched         = RegInit(false.B)
   val completePending = RegInit(false.B)
+  val dbgCycle        = RegInit(0.U(32.W))
+  dbgCycle := dbgCycle + 1.U
 
   io.progPort.ready := true.B
 
@@ -66,9 +68,12 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
     initFull        := io.progPort.bits.initFull
     initEmpty       := io.progPort.bits.initEmpty
     eventMode       := io.progPort.bits.eventMode
-    when(io.progPort.bits.eventMode === SemEventModes.R) {printf(p"Loaded READMODE!! semIdx=$semIdx\n")}
     touched         := false.B
     completePending := false.B
+
+    if(c.verbosePrint) {
+      printf(p"cyc=${dbgCycle} [sem-prog] idx=${semIdx} newGen=${io.progPort.bits.generation} initFull=${io.progPort.bits.initFull} initEmpty=${io.progPort.bits.initEmpty}\n")
+    }
   }
 
   val atInit = full === initFull && empty === initEmpty
@@ -107,6 +112,7 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
   when(io.eventPort.fire) {
     completePending := false.B
     touched         := false.B
+    printf(p"cyc=${dbgCycle} [sem-complete-src] idx=${semIdx} fusedAddr=${fusedAddr} eventMode=${eventMode} gen=${generation} full=${full} empty=${empty}\n")
   }
 
 
@@ -160,6 +166,10 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
             is(TilelinkOpcodes.ArithmeticData){
               when(!genMatches){
                 statereg := denied
+
+                if(c.verbosePrint) {
+                  printf(p"cyc=${dbgCycle} [sem-denied] idx=${semIdx} port=${idx.U} reqAddrGen=${port.a.bits.address(genWidth - 1, 0)} curGen=${generation} param=${port.a.bits.param}\n")
+                }
               }.otherwise {
                 switch(port.a.bits.param){
                   is(ArithmeticDataParam.AQGREQ){
@@ -231,6 +241,10 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
           touched := true.B
           statereg := idle
           applied  := false.B
+
+          if(c.verbosePrint) {
+            printf(p"cyc=${dbgCycle} [sem-modify] idx=${semIdx} port=${idx.U} sel=${sel} gen=${generation} delta=${reg.data} newVal=${newVal}\n")
+          }
         }
       }
       is(denied){
@@ -259,8 +273,14 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
 
         val data = MuxLookup(genRegMatches, 0.U)(Seq(
           false.B -> 0.U,
-          true.B  -> regs(reg.address(regSelectBit)) 
+          true.B  -> regs(reg.address(regSelectBit))
         ))
+        when(port.d.valid && !genRegMatches) {
+
+          if(c.verbosePrint) {
+            printf(p"cyc=${dbgCycle} [sem-get-genmiss] idx=${semIdx} port=${idx.U} reqAddrGen=${reg.address(genWidth - 1, 0)} curGen=${generation}\n")
+          }
+        }
 
         port.d.bits.opcode  := TilelinkOpcodes.AccessAckData
         port.d.bits.param   := 0.U
