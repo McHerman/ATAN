@@ -34,6 +34,7 @@ class AtanMcc16x16DUT(
     val AXIST_inInst = Flipped(new AXIST_2(128, 2, 1, 1, 1))
     val axi_s0       = Flipped(new CustomAXI4Lite(32, 32))
     val hostIn       = Flipped(new TilelinkPort(c.tlBus))
+    val hostInRiscV  = Flipped(new TilelinkPort(c.tlBus))
     val mccTohost    = Output(UInt(32.W))
     val mccSuccess   = Output(Bool())
     val mccInitDone  = Output(Bool())
@@ -48,6 +49,8 @@ class AtanMcc16x16DUT(
   io.mccTohost   := mcc.io.tohost
   io.mccSuccess  := mcc.io.success
   io.mccInitDone := mcc.io.initDone
+
+  io.hostInRiscV <> mcc.io.hostIn
 
   // ── TLXbar: route mcc dmem to two slaves ────────────────────────────────
   //

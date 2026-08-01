@@ -42,6 +42,7 @@ class MccWrapper(initData: Map[Int, BigInt] = Map.empty)(implicit atanConfig: Co
 
   implicit val coreConf: mcc.common.MccCoreParams = mcc.common.MccCoreParams(
     xprlen = 32,
+    trace = sys.env.contains("MCC_TRACE"),
     mmioNoAlignCheckBase = Some(rp.semBase.toLong),
     mmioNoAlignCheckSize = semMmioSize,
   )
@@ -56,6 +57,7 @@ class MccWrapper(initData: Map[Int, BigInt] = Map.empty)(implicit atanConfig: Co
     val tohost   = Output(UInt(32.W))
     val success  = Output(Bool())
     val initDone = Output(Bool())
+    val hostIn   = Flipped(new TilelinkPort(rp.tlBus))
   })
 
   val core = Module(new mcc.stage5.Core()(p, coreConf, coreBusConf))
@@ -93,6 +95,9 @@ class MccWrapper(initData: Map[Int, BigInt] = Map.empty)(implicit atanConfig: Co
   core.io.imem.d.bits.data    := imemMod.io.tl.d.bits.data
   core.io.imem.d.bits.corrupt := imemMod.io.tl.d.bits.corrupt
   imemMod.io.tl.d.ready       := core.io.imem.d.ready
+
+
+  imemMod.io.host <> io.hostIn
 
   val initDone: Bool = imemMod.io.initDone
   io.initDone := initDone
