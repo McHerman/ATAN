@@ -273,6 +273,26 @@ class MemTierScratchpad(config: SPMConfig)(implicit c: MemBusConfig) extends Mod
       Vec(portElems, UInt(config.wideBanks.map(_ => 32).getOrElse(c.arithDataWidth).W)), Some(16))))
   })
 
+  val mem = SyncReadMem(config.bankDepth, Vec(c.dataBusSize, UInt(8.W)))
+
+  io.Writeport.foreach { port =>
+    port.ready := true.B
+    val wordAddr = port.bits.addr >> log2Ceil(c.dataBusSize)
+
+    val gatedStrb = VecInit(port.bits.data.strb.map(_ && port.fire))
+    mem.write(wordAddr, port.bits.data.writeData, gatedStrb)
+  }
+
+  io.Readport.foreach { port =>
+    port.request.ready := true.B
+    val wordAddr = port.request.bits.addr.get >> log2Ceil(c.dataBusSize)
+    val readResult = mem.read(wordAddr)
+    port.response.bits.readData := readResult.asUInt.asTypeOf(Vec(c.dataBusSize, UInt(c.arithDataWidth.W)))
+    port.response.valid := RegNext(port.request.fire)
+  }
+
+  /*
+
   config.wideBanks match {
     case None =>
       val mem = SyncReadMem(config.bankDepth, Vec(c.dataBusSize, UInt(8.W)))
@@ -310,4 +330,5 @@ class MemTierScratchpad(config: SPMConfig)(implicit c: MemBusConfig) extends Mod
         port.response.valid         := RegNext(port.request.fire)
       }
   }
+  */
 }

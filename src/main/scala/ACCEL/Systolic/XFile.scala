@@ -25,11 +25,24 @@ class XFile(implicit c: Configuration) extends Module {
   unpacker.io.beatIn <> io.Memport
   unpacker.io.size := io.loadSize
 
-  val moduleArray = Seq.fill(c.arrayDim)(Module(new BufferFIFO(c.grainFIFOSize, UInt(8.W))))
+  val dbgCycle = RegInit(0.U(32.W))
+  dbgCycle := dbgCycle + 1.U
+  val dbgLoadCount = RegInit(0.U(32.W))
+  when(io.Memport.fire) {
+    dbgLoadCount := dbgLoadCount + 1.U
+
+    if(c.verbosePrint) {
+      printf(p"cyc=${dbgCycle} [xfile-beat] #${dbgLoadCount} loadSize=${io.loadSize} bytes=${io.Memport.bits}\n")
+    }
+  }
+
+  val moduleArray = Seq.fill(c.arrayDim)(Module(new BufferStack(c.grainFIFOSize, UInt(8.W))))
 
   val XACT = RegInit(VecInit.fill(c.arrayDim)(0.U(1.W)))
 
   moduleArray.zipWithIndex.foreach{case (module,i) =>
+    module.io.size := io.loadSize
+
     if(i == 0){
       XACT(0) := io.Activate
     }else{
@@ -38,7 +51,10 @@ class XFile(implicit c: Configuration) extends Module {
 
     module.io.WriteData.valid := unpacker.io.subRowValid
     module.io.WriteData.bits := unpacker.io.subRow(i)
-
+    
+    //module.io.WriteData.valid := io.Memport.valid 
+    //module.io.WriteData.bits := io.Memport.bits(i)
+    
     module.io.ReadData.request.valid := false.B
     module.io.ReadData.request.bits := DontCare
 
@@ -54,7 +70,8 @@ class XFile(implicit c: Configuration) extends Module {
   }
 
   io.ActivateOut := XACT.last
-  unpacker.io.subRowReady := VecInit(moduleArray.map(_.io.WriteData.ready)).reduceTree(_ && _)
 
+  //io.Memport.ready := VecInit(moduleArray.map(_.io.WriteData.ready)).reduceTree(_ && _)
+  unpacker.io.subRowReady := VecInit(moduleArray.map(_.io.WriteData.ready)).reduceTree(_ && _)
 }
 

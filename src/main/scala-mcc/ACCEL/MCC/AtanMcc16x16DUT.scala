@@ -53,18 +53,9 @@ class AtanMcc16x16DUT(
   io.hostInRiscV <> mcc.io.hostIn
 
   // ── TLXbar: route mcc dmem to two slaves ────────────────────────────────
-  //
-  // The shared-SPM address-set mask must not exceed what mcc's own dmem
-  // bus (c.riscv.tlBus, a fixed 16-bit local address window regardless of
-  // the surrounding tier's real size -- MccWrapper always truncates to the
-  // low 16 bits on rebase) can express. Tier0 itself can be far larger
-  // (MemSystemConfig.large()'s tier0 alone is 1MB) than mcc's addressable
-  // window, but mcc only ever touches a handful of buffers near the start
-  // of it, so capping the mask at mcc's own bus width is correct, not just
-  // convenient -- anything mcc could actually emit already falls in range.
   val mccAddrSpace  = BigInt(1) << c.riscv.tlBus.addrWidth
   val tier0Size     = BigInt(memCfgBase.tiers(0).bankDepth) * atanConfig.dataBusSize
-  val sharedSpmMask = tier0Size.min(mccAddrSpace) - 1
+  val sharedSpmMask = tier0Size.min(mccAddrSpace).min(BigInt(c.riscv.semBase)) - 1 //Limit mask to avoid overlap in semaphore and spm address space
 
   // Must cover every address in semaphore address range
   val semMaxOffset: BigInt =
