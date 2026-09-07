@@ -8,7 +8,8 @@ import freechips.rocketchip.rocket.CoreInterrupts
 /**
  * Wraps the mcc RISC-V core together with its private instruction memory,
  * exposing a single dmem TileLink port (rebased to `atanConfig.riscv`'s
- * 16-bit local address window) plus tohost/success/initDone.
+ * local address window, sized by `MccParams.tlBus.addrWidth`) plus
+ * tohost/success/initDone.
  *
  * imem is synchronous and TileLink-backed (mcc.ImemTL): a private
  * MemTierScratchpad bank, loaded at boot via a write-only
@@ -102,9 +103,9 @@ class MccWrapper(initData: Map[Int, BigInt] = Map.empty)(implicit atanConfig: Co
   val initDone: Bool = imemMod.io.initDone
   io.initDone := initDone
 
-  // ── Data memory: rebase to the 16-bit ATAN-local window; gate the A
-  // channel on ROM-load completion so mcc can't touch dmem before its
-  // program image is in place ───────────────────────────────────────────
+  // ── Data memory: rebase to the ATAN-local window (rp.tlBus.addrWidth
+  // bits); gate the A channel on ROM-load completion so mcc can't touch
+  // dmem before its program image is in place ───────────────────────────
   val mccA = core.io.dmem.a
 
   core.io.dmem <> io.dmem
@@ -114,7 +115,7 @@ class MccWrapper(initData: Map[Int, BigInt] = Map.empty)(implicit atanConfig: Co
   io.dmem.a.bits.param   := mccA.bits.param
   io.dmem.a.bits.size    := mccA.bits.size
   io.dmem.a.bits.source  := mccA.bits.source
-  io.dmem.a.bits.address := (mccA.bits.address - rp.baseAddr.U)(15, 0)
+  io.dmem.a.bits.address := (mccA.bits.address - rp.baseAddr.U)(rp.tlBus.addrWidth - 1, 0)
   io.dmem.a.bits.mask    := mccA.bits.mask
   io.dmem.a.bits.data    := mccA.bits.data
   io.dmem.a.bits.corrupt := mccA.bits.corrupt

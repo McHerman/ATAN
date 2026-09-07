@@ -349,3 +349,5 @@ hs_err_pid*
 # Generated flatbuffer classes
 assembler/src/main/java/eaac_fb/
 
+*.memhex
+

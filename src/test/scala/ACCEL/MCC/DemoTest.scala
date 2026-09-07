@@ -21,7 +21,7 @@ class DemoTest extends AnyFreeSpec with Matchers with ChiselSim {
     .withBus(_.copy(sourceWidth = 8))
     .withSemaphore(_.copy(nSemaphores = 64, generationWidth = 2, queueSize = 256))
     .withTrigger(_.copy(rows = 256))
-    .copy(riscv = MccParams(enabled = true, imemWords = 16384, semBase = 0x8000), verbosePrint = false)
+    .copy(riscv = MccParams(enabled = true, imemWords = 16384, semBase = 65536), verbosePrint = false)
 
   val msCfg = MemSystemConfig.extra_large().copy(
     dataBusSize = testConfig.dataBusSize,
