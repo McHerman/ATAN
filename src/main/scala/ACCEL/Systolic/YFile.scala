@@ -35,11 +35,14 @@ class YFile(implicit c: Configuration) extends Module {
     }
   }
 
-  val moduleArray = Seq.fill(c.arrayDim)(Module(new BufferFIFO(c.grainFIFOSize, UInt(8.W))))
+  val moduleArray = Seq.fill(c.arrayDim)(Module(new BufferStack(c.grainFIFOSize, UInt(8.W))))
+  //val moduleArray = Seq.fill(c.arrayDim)(Module(new BufferFIFO(c.grainFIFOSize, UInt(8.W))))
 
   val YACT = RegInit(VecInit.fill(c.arrayDim)(0.U(1.W)))
 
   moduleArray.zipWithIndex.foreach { case (module, i) =>
+    module.io.size := io.loadSize
+
     if(i == 0){
       YACT(0) := io.Activate
     }else{

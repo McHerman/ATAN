@@ -26,7 +26,7 @@ class FrontEnd(implicit c: Configuration) extends Module {
   })
 
   val Reciever  = Module(new InstReciever)
-  val beatQueue = Module(new Queue(new InstBeat, 32))
+  val beatQueue = Module(new Queue(new InstBeat, 256))
   val Realigner = Module(new InstRealigner)
   val Decoder   = Module(new Decoder)
   val Dispatch  = Module(new Dispatch)

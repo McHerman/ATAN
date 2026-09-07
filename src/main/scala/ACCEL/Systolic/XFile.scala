@@ -37,6 +37,7 @@ class XFile(implicit c: Configuration) extends Module {
   }
 
   val moduleArray = Seq.fill(c.arrayDim)(Module(new BufferStack(c.grainFIFOSize, UInt(8.W))))
+  //val moduleArray = Seq.fill(c.arrayDim)(Module(new BufferFIFO(c.grainFIFOSize, UInt(8.W))))
 
   val XACT = RegInit(VecInit.fill(c.arrayDim)(0.U(1.W)))
 

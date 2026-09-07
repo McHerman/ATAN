@@ -21,13 +21,9 @@ class ACCUFile(val hasDelay: Boolean, val stack: Boolean)(implicit c: Configurat
   io.Readport.response.valid := true.B
   io.Readport.response.bits := DontCare
 
-  //if(stack){
-  //  val moduleArray = Seq.fill(c.arrayDim)(Module(new BufferStack(c.grainFIFOSize, UInt(c.accDataWidth.W))))
-  //}else{
-  //  val moduleArray = Seq.fill(c.arrayDim)(Module(new BufferFIFO(c.grainFIFOSize, UInt(c.accDataWidth.W))))
-  //}
-  //
+
   val moduleArray = Seq.fill(c.arrayDim)(Module(new BufferStack(c.grainFIFOSize, UInt(c.accDataWidth.W))))
+  //val moduleArray = Seq.fill(c.arrayDim)(Module(new BufferFIFO(c.grainFIFOSize, UInt(c.accDataWidth.W))))
 
   val ACCUAct    = RegInit(VecInit.fill(c.arrayDim)(0.U(1.W)))
   val activateIn = Wire(Bool())

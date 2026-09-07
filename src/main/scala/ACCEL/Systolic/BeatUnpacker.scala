@@ -24,7 +24,7 @@ class BeatUnpacker(implicit c: Configuration) extends Module {
   val effSize = Mux(io.size === 0.U, c.arrayDim.U, io.size)
 
   io.beatIn.ready := !busy
-  io.subRowValid  := busy
+  io.subRowValid  := busy && io.subRowReady // FIXME Not super great in terms of combinational delay, but will have to do for now due to the broadcasting behavior.
 
   for (i <- 0 until c.arrayDim) {
     val srcIdx = byteOffset +& i.U

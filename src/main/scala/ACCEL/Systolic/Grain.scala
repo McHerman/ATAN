@@ -21,7 +21,7 @@ class Grain(implicit c: Configuration) extends Module {
   val xFiles = Seq.fill(c.grainDim)(Module(new XFile())) 
   val yFiles = Seq.fill(c.grainDim)(Module(new YFile())) 
 
-  val accuFiles = Seq.fill(c.grainDim)(Module(new ACCUFile(false)))
+  val accuFiles = Seq.fill(c.grainDim)(Module(new ACCUFile(false,true))) // Enable stack for reordering
 
   val SysCtrl = Module(new SysCtrl())
 
@@ -40,6 +40,8 @@ class Grain(implicit c: Configuration) extends Module {
   (yFiles zip io.writePort(1)).foreach{case (file, port) => 
     file.io.Memport <> port
   }
+
+  // TODO, the decoupled connection here is a little dubious, we should problably gather all the ready signals and treeReduce instead.
 
   (accuFiles zip io.readPort).foreach{case (file,port) => 
     file.io.Readport <> port

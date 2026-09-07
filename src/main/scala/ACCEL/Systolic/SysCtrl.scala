@@ -58,6 +58,27 @@ class SysCtrl(implicit c: Configuration) extends Module {
 
   io.sizes := inReg.sizes
 
+  val dbgCycle = RegInit(0.U(32.W))
+  dbgCycle := dbgCycle + 1.U
+  val dbgOpCount = RegInit(0.U(32.W))
+  when(io.in.fire) {
+    dbgOpCount := dbgOpCount + 1.U
+    if(c.verbosePrint) {
+      printf(p"cyc=${dbgCycle} [sysctrl-op] #${dbgOpCount} mode=${io.in.bits.mode} size=${io.in.bits.size} rows=${io.in.bits.rows}\n")
+    }
+  }
+
+  // StateReg edge trace: StateReg==0 is idle (ready for the next op);
+  // any other value is "GEMM busy" (shift/activate/OS-mode). Printed only on
+  // transitions (not every cycle) so a timing-breakdown script can integrate
+  // busy/idle intervals between consecutive events.
+  if (c.verbosePrint) {
+    val prevStateReg = RegNext(StateReg, 0.U)
+    when(StateReg =/= prevStateReg) {
+      printf(p"cyc=${dbgCycle} [sysctrl-state] from=${prevStateReg} to=${StateReg}\n")
+    }
+  }
+
   switch(StateReg){ // TODO, Add enumerations
     is(0.U){
       io.in.ready := true.B
