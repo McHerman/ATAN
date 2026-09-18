@@ -44,7 +44,7 @@ class MccWrapper(initData: Map[Int, BigInt] = Map.empty)(implicit atanConfig: Co
   implicit val coreConf: mcc.common.MccCoreParams = mcc.common.MccCoreParams(
     xprlen = 32,
     trace = sys.env.contains("MCC_TRACE"),
-    mmioNoAlignCheckBase = Some(rp.semBase.toLong),
+    mmioNoAlignCheckBase = Some(0x80000000L + rp.semBase.toLong),
     mmioNoAlignCheckSize = semMmioSize,
   )
   val coreBusConf: MemBusConfig       = CoreMemBusConfig(
@@ -80,7 +80,7 @@ class MccWrapper(initData: Map[Int, BigInt] = Map.empty)(implicit atanConfig: Co
   imemMod.io.tl.a.bits.param   := mccImemA.bits.param
   imemMod.io.tl.a.bits.size    := mccImemA.bits.size
   imemMod.io.tl.a.bits.source  := mccImemA.bits.source
-  imemMod.io.tl.a.bits.address := (mccImemA.bits.address - rp.baseAddr.U)(15, 0)
+  imemMod.io.tl.a.bits.address := (mccImemA.bits.address - rp.baseAddr.U)
   imemMod.io.tl.a.bits.mask    := mccImemA.bits.mask
   imemMod.io.tl.a.bits.data    := mccImemA.bits.data
   imemMod.io.tl.a.bits.corrupt := mccImemA.bits.corrupt

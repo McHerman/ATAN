@@ -90,7 +90,8 @@ package object ATA8 {
   ) {
     val addrBits: Int      = log2Ceil(imemWords * 4)
     val coreBusConf: BusParams = BusParams(dataBusSize = 4, addrWidth = 32, sourceWidth = 1)
-    val tlBus: TLBusConfig = TLBusConfig(dataBusSize = 4, addrWidth = 16, sourceWidth = 1)
+    //val tlBus: TLBusConfig = TLBusConfig(dataBusSize = 4, addrWidth = 32, sourceWidth = 1)
+    val tlBus: TLBusConfig = TLBusConfig(dataBusSize = 4, addrWidth = 32, sourceWidth = 1)
   }
 
   /** Trigger-system (predicate-table dispatcher) parameters. */

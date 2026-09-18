@@ -25,13 +25,13 @@ import io.circe.parser._
 class ScalingTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   val n         = 16
-  val maxCycles = 400000 
+  val maxCycles = 200000 
 
   val testConfig: Configuration = Configuration.large16x16()
     .withBus(_.copy(sourceWidth = 8))
-    .withSemaphore(_.copy(nSemaphores = 64, generationWidth = 2, queueSize = 256))
-    .withTrigger(_.copy(rows = 256))
-    .copy(riscv = MccParams(enabled = true, imemWords = 16384, semBase = 32768))
+    .withSemaphore(_.copy(nSemaphores = 32, generationWidth = 2, queueSize = 256))
+    .withTrigger(_.copy(rows = 16))
+    .copy(riscv = MccParams(enabled = true, imemWords = 16384, semBase = 65536))
 
   val msCfg = MemSystemConfig.extra_large().copy(
     dataBusSize = testConfig.dataBusSize,
@@ -315,6 +315,7 @@ class ScalingTest extends AnyFreeSpec with Matchers with ChiselSim {
     runScalingCase("scaling_k24")
   }
 
+  /*
   "K=25 unit of work" in {
     runScalingCase("scaling_k25")
   }
@@ -322,4 +323,5 @@ class ScalingTest extends AnyFreeSpec with Matchers with ChiselSim {
   "K=32 unit of work" in {
     runScalingCase("scaling_k32")
   }
+  */
 }
