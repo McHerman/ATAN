@@ -65,9 +65,9 @@ package object ATA8 {
   /** Semaphore-system parameters. */
   case class SemaphoreParams(
     nSemaphores:     Int = 8,
-    queueSize:       Int = 2,
+    queueSize:       Int = 16,
     // 0 disables the gen check and preserves the legacy 2-address-per-port layout.
-    generationWidth: Int = 0,
+    generationWidth: Int = 2,
   )
 
   /** Embedded RISC-V core (mcc) integration parameters.
