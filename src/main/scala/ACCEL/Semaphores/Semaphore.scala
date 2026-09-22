@@ -112,7 +112,9 @@ class Semaphore(val semIdx: Int)(implicit c: Configuration) extends Module {
   when(io.eventPort.fire) {
     completePending := false.B
     touched         := false.B
-    printf(p"cyc=${dbgCycle} [sem-complete-src] idx=${semIdx} fusedAddr=${fusedAddr} eventMode=${eventMode} gen=${generation} full=${full} empty=${empty}\n")
+    if(c.verbosePrint) {
+      printf(p"cyc=${dbgCycle} [sem-complete-src] idx=${semIdx} fusedAddr=${fusedAddr} eventMode=${eventMode} gen=${generation} full=${full} empty=${empty}\n")
+    } 
   }
 
 

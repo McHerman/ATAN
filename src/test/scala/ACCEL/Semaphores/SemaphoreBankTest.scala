@@ -5,6 +5,9 @@ import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.freespec.AnyFreeSpec
 import org.scalatest.matchers.must.Matchers
 
+
+import eaac.shared.InstructionSet
+
 // Bundle of information for one TileLink ArithmeticData transaction
 case class TLReq(param: UInt, address: Int, data: Int, source: Int = 0)
 
@@ -16,31 +19,14 @@ class SemaphoreBankTest extends AnyFreeSpec with Matchers with ChiselSim {
   // Address of semaphore i, port j, register reg (0=full, 1=empty)
   // semaphore i → xbar slaves 2*i (port 0) and 2*i+1 (port 1)
   // base address = i*4 + j*2; bit 0 selects register
-  def semAddr(semIdx: Int, portIdx: Int, reg: Int): Int = semIdx * 4 + portIdx * 2 + reg
-
-  def defaultPokes(dut: SemaphoreBank, noPorts: Int): Unit = {
-    for (i <- 0 until noPorts) {
-      dut.io.inPorts(i).a.valid.poke(false.B)
-      dut.io.inPorts(i).a.bits.opcode.poke(0.U)
-      dut.io.inPorts(i).a.bits.param.poke(0.U)
-      dut.io.inPorts(i).a.bits.size.poke(0.U)
-      dut.io.inPorts(i).a.bits.source.poke(0.U)
-      dut.io.inPorts(i).a.bits.address.poke(0.U)
-      dut.io.inPorts(i).a.bits.mask.poke(0.U)
-      dut.io.inPorts(i).a.bits.data.poke(0.U)
-      dut.io.inPorts(i).a.bits.corrupt.poke(0.U)
-      dut.io.inPorts(i).d.ready.poke(false.B)
-    }
-    dut.io.progPort.valid.poke(false.B)
-    dut.io.progPort.bits.addr.poke(0.U)
-    dut.io.progPort.bits.initFull.poke(0.U)
-    dut.io.progPort.bits.initEmpty.poke(0.U)
-  }
+  //def semAddr(semIdx: Int, portIdx: Int, reg: Int, generation: Int = 0): Int = semIdx * 4 + portIdx * 2 + reg
+  def semAddr(semIdx: Int, portIdx: Int, reg: Int, generation: Int = 0): Int = (semIdx << 2 + 2) + (portIdx << 1 + 2) + (reg << 2) + generation
 
   // progPort.addr == semIdx directly
-  def programSemaphore(dut: SemaphoreBank, semIdx: Int, full: Int, empty: Int): Unit = {
+  def programSemaphore(dut: SemaphoreBank, semIdx: Int, full: Int, empty: Int, generation: Int = 0): Unit = {
     dut.io.progPort.valid.poke(true.B)
     dut.io.progPort.bits.addr.poke(semIdx.U)
+    dut.io.progPort.bits.generation.poke(generation.U)
     dut.io.progPort.bits.initFull.poke(full.U)
     dut.io.progPort.bits.initEmpty.poke(empty.U)
     dut.clock.step()
@@ -85,7 +71,6 @@ class SemaphoreBankTest extends AnyFreeSpec with Matchers with ChiselSim {
   "Routing: request to semaphore 0 is correctly handled" in {
     implicit val c = bankConfig
     simulate(new SemaphoreBank(2)) { dut =>
-      defaultPokes(dut, 2)
       programSemaphore(dut, semIdx = 0, full = 10, empty = 5)
 
       val result = sendAndReceive(dut, masterIdx = 0,
@@ -97,11 +82,10 @@ class SemaphoreBankTest extends AnyFreeSpec with Matchers with ChiselSim {
   "Routing: request to semaphore 5 is correctly handled" in {
     implicit val c = bankConfig
     simulate(new SemaphoreBank(2)) { dut =>
-      defaultPokes(dut, 2)
       programSemaphore(dut, semIdx = 5, full = 99, empty = 1)
 
       val result = sendAndReceive(dut, masterIdx = 0,
-        TLReq(param = ArithmeticDataParam.AQGREQ, address = semAddr(5, 0, 0), data = 0))
+        TLReq(param = ArithmeticDataParam.AQGREQ, address = semAddr(5, 0, 0, 0), data = 0))
       assert(result == 99, s"Expected full=99 from semaphore 5, got $result")
     }
   }
@@ -109,16 +93,15 @@ class SemaphoreBankTest extends AnyFreeSpec with Matchers with ChiselSim {
   "Routing: both ports of the same semaphore alias the same physical registers" in {
     implicit val c = bankConfig
     simulate(new SemaphoreBank(2)) { dut =>
-      defaultPokes(dut, 2)
       programSemaphore(dut, semIdx = 2, full = 0, empty = 0)
 
       // Write full reg via port 0
       sendAndReceive(dut, masterIdx = 0,
-        TLReq(param = ArithmeticDataParam.ADD, address = semAddr(2, 0, 0), data = 7))
+        TLReq(param = ArithmeticDataParam.ADD, address = semAddr(2, 0, 0, 0), data = 7))
 
       // Read full reg via port 1 — should see the value written through port 0
       val result = sendAndReceive(dut, masterIdx = 1,
-        TLReq(param = ArithmeticDataParam.AQGREQ, address = semAddr(2, 1, 0), data = 0))
+        TLReq(param = ArithmeticDataParam.AQGREQ, address = semAddr(2, 1, 0, 0), data = 0))
       assert(result == 7, s"Expected aliased full=7 via port 1, got $result")
     }
   }
@@ -126,7 +109,6 @@ class SemaphoreBankTest extends AnyFreeSpec with Matchers with ChiselSim {
   "Routing: two masters access different semaphores independently" in {
     implicit val c = bankConfig
     simulate(new SemaphoreBank(2)) { dut =>
-      defaultPokes(dut, 2)
       programSemaphore(dut, semIdx = 1, full = 11, empty = 0)
       programSemaphore(dut, semIdx = 4, full = 44, empty = 0)
 
@@ -143,7 +125,6 @@ class SemaphoreBankTest extends AnyFreeSpec with Matchers with ChiselSim {
   "Producer/consumer through both ports of semaphore 0" in {
     implicit val c = bankConfig
     simulate(new SemaphoreBank(2)) { dut =>
-      defaultPokes(dut, 2)
 
       val bufferSize = 4
       val transfers  = 8
