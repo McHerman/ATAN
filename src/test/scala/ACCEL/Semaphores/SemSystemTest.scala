@@ -13,7 +13,11 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
 
   val noPorts = 4
 
-  def semAddr(semIdx: Int, portIdx: Int, reg: Int): Int = semIdx * 4 + portIdx * 2 + reg
+  def semAddr(semIdx: Int, portIdx: Int, reg: Int): Int = {
+    val gw = c.semaphoreGenerationWidth
+    val perSlaveStride = 2 << gw
+    (semIdx * 2 + portIdx) * perSlaveStride + (reg << gw)
+  }
 
   def defaultPokes(dut: SemSystem): Unit = {
     for (i <- 0 until noPorts) {
@@ -29,10 +33,15 @@ class SemSystemTest extends AnyFreeSpec with Matchers with ChiselSim {
       dut.io.inPorts(i).d.ready.poke(false.B)
     }
     dut.io.instructionStream.valid.poke(false.B)
-    dut.io.instructionStream.bits.opcode.poke(0.U)
     dut.io.instructionStream.bits.payload.semAddr.poke(0.U)
     dut.io.instructionStream.bits.payload.initFull.poke(0.U)
     dut.io.instructionStream.bits.payload.initEmpty.poke(0.U)
+    dut.io.instructionStream.bits.payload.generation.poke(0.U)
+    dut.io.instructionStream.bits.payload.eventMode.poke(0.U)
+    dut.io.instructionStream.bits.row.depCount.poke(0.U)
+    for (i <- 0 until eaac.shared.InstructionSet.MaxSemDeps) {
+      dut.io.instructionStream.bits.row.depAddrs(i).poke(0.U)
+    }
   }
 
   def sendAndReceive(dut: SemSystem, masterIdx: Int, req: TLReq): BigInt = {
