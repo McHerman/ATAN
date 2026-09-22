@@ -1,7 +1,7 @@
 .section .text.init
 .globl _start
 _start:
-    li      sp, 0x80000F00
+    li      sp, 0x80007F00
 
     la      a0, __bss_start
     la      a1, __bss_end

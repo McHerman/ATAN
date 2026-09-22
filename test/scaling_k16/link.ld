@@ -29,7 +29,7 @@ SECTIONS {
         __bss_end = .;
     }
 
-    . = 0x80001000;
+    . = 0x80008000;
     .tohost : {
         tohost   = .;
         . += 4;
