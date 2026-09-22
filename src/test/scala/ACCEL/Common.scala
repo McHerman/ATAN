@@ -214,4 +214,26 @@ class AtanTestOps(
     for ((wordIdx, word) <- initData.toSeq.sortBy(_._1)) put(wordIdx.toLong * 4, word)
     put(InitDoneAddr, BigInt(1))
   }
+
+  def compareOutput(outputArrays: Seq[Int], rows: Seq[Seq[Int]]): Int = {
+    val n = rows.length 
+    var totalMismatches = 0
+
+    val grid = Array.tabulate(n, n) { (row, col) =>
+      val got = rows(row)(col)
+      val exp = outputArrays(row * n + col)
+      got - exp
+    }
+
+    val tileMismatches = grid.iterator.flatten.count(_ != 0)
+    totalMismatches += tileMismatches
+    if (tileMismatches > 0) {
+      //info(s"tile=$tileIdx: $tileMismatches/${n * n} mismatches (cell = got - expected, '.' = match)")
+      for (row <- 0 until n) {
+        val cells = (0 until n).map(col => if (grid(row)(col) == 0) "   ." else f"${grid(row)(col)}%4d").mkString(" ")
+        print(f"  row $row%2d: $cells")
+      }
+    }
+    return totalMismatches
+  }
 }
